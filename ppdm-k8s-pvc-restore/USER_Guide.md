@@ -9,13 +9,16 @@ The toolkit authenticates to PPDM, helps you pick a backup copy and PVCs, then s
 ```
 ppdm-env-check.sh  →  pvc_restore_wrapper.sh  →  ppdm-restore-selected-pvcs-api.sh
    (authenticate)        (interactive setup)            (restore execution)
+                              ↑                                    ↑
+                         k8s-cli.sh (sourced)              k8s-cli.sh (sourced)
 ```
 
-| Script | Role |
-|--------|------|
+| Script / library | Role |
+|------------------|------|
 | `ppdm-env-check.sh` | Connect to PPDM and obtain an API token |
+| `k8s-cli.sh` | Detect cluster CLI (`oc` or `kubectl`); sourced by wrapper and restore scripts |
 | `pvc_restore_wrapper.sh` | Interactive prompts for namespace, copy, and PVC selection |
-| `ppdm-restore-selected-pvcs-api.sh` | Submit the restore request to PPDM |
+| `ppdm-restore-selected-pvcs-api.sh` | Submit the restore request to PPDM (`POST /api/v2/restored-copies`) |
 
 ---
 
@@ -28,26 +31,44 @@ ppdm-env-check.sh  →  pvc_restore_wrapper.sh  →  ppdm-restore-selected-pvcs-
 | `bash` | Run the scripts |
 | `curl` | Call the PPDM REST API |
 | `jq` | Parse API responses |
-| `kubectl` or `oc` | List PVCs and verify namespaces (`oc` preferred when both are installed) |
+| `kubectl` or `oc` | List PVCs and verify namespaces (auto-selected — see `k8s-cli.sh`) |
+
+### Cluster CLI (`k8s-cli.sh`)
+
+Scripts that talk to the cluster (`pvc_restore_wrapper.sh`, `ppdm-restore-selected-pvcs-api.sh`) source **`k8s-cli.sh`** to pick the CLI at runtime:
+
+| Priority | CLI | When used |
+|----------|-----|-----------|
+| 1 | `oc` | OpenShift CLI found on `PATH` |
+| 2 | `kubectl` | Fallback when `oc` is not installed |
+| Override | `$K8S_CLI` | Force a specific binary (e.g. `export K8S_CLI=/path/to/oc`) |
+
+On startup you should see:
+
+```
+[INFO] Using cluster CLI: oc
+```
+
+All namespace checks, PVC listing, and label/annotation commands use the selected CLI — not hard-coded `kubectl`.
 
 ### Access you need
 
 - **PPDM** — hostname or IP, username, and password with permission to browse assets/copies and start restores
-- **Kubernetes** — `kubectl` (or `oc`) configured for the cluster where the source namespace lives
+- **Kubernetes / OpenShift** — `oc` or `kubectl` configured for the cluster where the source namespace lives
 - **Backup coverage** — the source namespace must exist as a `KUBERNETES` / `K8S_NAMESPACE` asset in PPDM
 
 ### Prepare your environment
 
 ```bash
 cd ppdm-k8s-pvc-restore
-chmod +x ppdm-env-check.sh pvc_restore_wrapper.sh ppdm-restore-selected-pvcs-api.sh
+chmod +x ppdm-env-check.sh k8s-cli.sh pvc_restore_wrapper.sh ppdm-restore-selected-pvcs-api.sh
 ```
 
-Verify cluster access:
+Verify cluster access (the toolkit will prefer `oc` when both are installed):
 
 ```bash
-kubectl get ns   # or: oc get ns
-kubectl get pvc -n <your-source-namespace>
+oc get ns 2>/dev/null || kubectl get ns
+oc get pvc -n <your-source-namespace> 2>/dev/null || kubectl get pvc -n <your-source-namespace>
 ```
 
 ---
@@ -138,7 +159,7 @@ Enter the number of the copy you want to restore from.
 
 #### 2d. Select PVCs
 
-PVCs are listed from the **live** source namespace via `kubectl`:
+PVCs are listed from the **live** source namespace via the cluster CLI (`oc` or `kubectl`):
 
 ```
 Available PVCs:
@@ -219,10 +240,14 @@ If `PPDM_BASE_URL` is already set, it takes priority over `PPDM_HOST`. URLs are 
 | `PPDM_HOST` | user | PPDM hostname or IP (used when `PPDM_BASE_URL` is unset) |
 | `PPDM_USER` | user | PPDM username |
 | `PPDM_PASSWORD` | user | PPDM password |
+| `K8S_CLI` | `k8s-cli.sh` / user | Cluster CLI to use (`oc` or `kubectl`; auto-detected if unset) |
 | `SOURCE_NAMESPACE` | user | Source Kubernetes namespace |
 | `TARGET_NAMESPACE` | user | Target Kubernetes namespace (must exist for `TO_EXISTING`) |
 | `SKIP_NAMESPACE_RESOURCES` | user | `true` (default) = PVC-only; `false` = include namespace resources |
 | `RESTORE_SCRIPT` | user | Path to restore script (default: `./ppdm-restore-selected-pvcs-api.sh`) |
+| `MAPPING_FILE` | user | Output path for PVC mapping TSV (restore script) |
+| `OVERWRITE_PVC` | user | `true` = overwrite existing PVC contents (restore script) |
+| `POLL_ACTIVITY` | user | `true` = wait for restore activity to complete (restore script) |
 
 ---
 
@@ -250,11 +275,22 @@ All auth errors are logged as `[ERROR]` lines with a clear message. Logs go to *
 | `PPDM_BASE_URL is not set` | Auth step skipped or run in subshell | Run `source ./ppdm-env-check.sh` in the same shell first |
 | `PPDM_TOKEN is not set` | Auth failed or session cleared | Re-authenticate |
 | `Namespace asset not found` | Namespace not protected in PPDM | Confirm the namespace is registered as a K8s namespace asset |
-| `No PVCs found` | Empty namespace or wrong context | Run `kubectl get pvc -n <namespace>`; check `kubectl config current-context` |
+| `No PVCs found` | Empty namespace or wrong context | Run `oc get pvc -n <namespace>` or `kubectl get pvc -n <namespace>`; check current context |
 | `Invalid selection` | Bad copy number | Pick a number from the displayed list |
-| `Target namespace not found` (WARN) | Namespace does not exist yet | `kubectl create namespace <name>` before restore |
+| `Target namespace not found` (WARN) | Namespace does not exist yet | `oc create namespace <name>` or `kubectl create namespace <name>` before restore |
 | `RESTORE_TYPE=... ignored` (WARN) | Unsupported restore type requested | Script forces `TO_EXISTING` per PPDM API |
-| `Missing required command: oc or kubectl` | No cluster CLI in PATH | Install `oc` (OpenShift) or `kubectl` and configure cluster access |
+| `Missing required command: oc or kubectl` | No cluster CLI in PATH | Install `oc` (OpenShift) or `kubectl`; or set `K8S_CLI` to the full path |
+| `not accessible with current oc context` | Wrong OpenShift project/context | `oc config current-context` / `oc project <namespace>` |
+| `not accessible with current kubectl context` | Wrong kubeconfig context | `kubectl config current-context` |
+
+### Restore API (`ppdm-restore-selected-pvcs-api.sh`)
+
+| Error / log | Likely cause | What to try |
+|-------------|--------------|-------------|
+| `oc/kubectl not available` (WARN) | Cluster CLI missing for optional checks | Install `oc` or `kubectl`; restore may still submit to PPDM |
+| `RESTORE_TYPE=... ignored` (WARN) | Non-`TO_EXISTING` type requested | Expected — script always uses `TO_EXISTING` |
+| `Submitting Kubernetes PVC restore (POST /api/v2/restored-copies) failed` | PPDM API or payload error | Check HTTP message; verify `copyIds`, `targetInventorySourceId`, and PVC names |
+| `Restore request accepted but no activity ID` | Unexpected API response | Check PPDM version and API permissions |
 
 ---
 
