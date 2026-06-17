@@ -1,0 +1,21 @@
+# Secrets and local environment
+.env
+.env.*
+*.pem
+*.key
+
+# Restore script output
+pvc-restore-mapping-*.tsv
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*~
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.code-workspace

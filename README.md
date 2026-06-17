@@ -9,3 +9,7 @@ Scripts for restoring Kubernetes PersistentVolumeClaims (PVCs) from [Dell PowerP
 | [`ppdm-k8s-pvc-restore/`](ppdm-k8s-pvc-restore/) | Interactive PVC restore toolkit |
 
 See [ppdm-k8s-pvc-restore/USER_Guide.md](ppdm-k8s-pvc-restore/USER_Guide.md) for usage, requirements, and workflow details.
+
+## License
+
+[MIT](LICENSE)
