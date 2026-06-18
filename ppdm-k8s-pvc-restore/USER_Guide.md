@@ -101,7 +101,7 @@ or (insecure mode):
 
 ### Logging (`ppdm-logging.sh`)
 
-All main scripts write timestamped `[INFO]` / `[WARN]` / `[ERROR]` lines to **stderr** and to a log file under **`logs/`** (created automatically).
+All main scripts write timestamped `[INFO]` / `[WARN]` / `[ERROR]` lines to **stderr** and to a log file under **`logs/`** (created automatically). Each line uses **CRLF** (`\r\n`) line endings in both the console and log file so output is readable in editors and on Windows. Interactive prompts and answers are logged as `[INPUT]` lines (passwords as `<redacted>`).
 
 | Run | Log file example |
 |-----|------------------|

@@ -400,7 +400,7 @@ submit_restore() {
   local payload="$1"
 
   log_info "Submitting restore request to PPDM"
-  echo "$payload" | jq '.' >&2
+  echo "$payload" | jq '.' | ppdm_out_stream
 
   ppdm_api_request "POST" "${PPDM_BASE_URL}/api/v2/restored-copies" \
     "Submitting Kubernetes PVC restore (POST /api/v2/restored-copies)" \

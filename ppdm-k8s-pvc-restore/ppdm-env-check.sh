@@ -90,7 +90,7 @@ configure_ppdm_tls() {
   fi
 
   local answer
-  read -rp "Skip TLS certificate verification for self-signed PPDM certificates? (y/N): " answer
+  ppdm_prompt answer "Skip TLS certificate verification for self-signed PPDM certificates? (y/N): "
   case "$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')" in
     y|yes)
       export PPDM_CURL_INSECURE=true
@@ -190,7 +190,7 @@ ppdm_env_check_main() {
     PPDM_BASE_URL="$(normalize_ppdm_url "$PPDM_BASE_URL")"
   else
     if [[ -z "${PPDM_HOST:-}" ]]; then
-      read -rp "PPDM Host (FQDN or IP, no port): " PPDM_HOST
+      ppdm_prompt PPDM_HOST "PPDM Host (FQDN or IP, no port): "
     else
       log_info "Using PPDM_HOST from environment"
     fi
@@ -202,7 +202,7 @@ ppdm_env_check_main() {
   log_info "Using PPDM_BASE_URL=${PPDM_BASE_URL}"
 
   if [[ -z "${PPDM_USER:-}" ]]; then
-    read -rp "PPDM Username: " PPDM_USER
+    ppdm_prompt PPDM_USER "PPDM Username: "
   else
     log_info "Using PPDM_USER from environment"
   fi
@@ -210,8 +210,7 @@ ppdm_env_check_main() {
   [[ -n "$PPDM_USER" ]] || die "PPDM username cannot be empty"
 
   if [[ -z "${PPDM_PASSWORD:-}" ]]; then
-    read -rsp "PPDM Password: " PPDM_PASSWORD
-    echo
+    ppdm_prompt_secret PPDM_PASSWORD "PPDM Password: "
   else
     log_info "Using PPDM_PASSWORD from environment"
   fi

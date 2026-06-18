@@ -151,8 +151,8 @@ select_backup_copy() {
 
   log_info "Found ${copy_count} backup copy/copies for namespace '${namespace}'"
 
-  echo "Available copies:" >&2
-  printf '%-4s %-38s %-22s %-24s %s\n' '#' 'Copy ID' 'Create Time' 'AssetName' 'Location' >&2
+  ppdm_out "Available copies:"
+  ppdm_out "$(printf '%-4s %-38s %-22s %-24s %s' '#' 'Copy ID' 'Create Time' 'AssetName' 'Location')"
   echo "$filtered_copies" | jq -r '
     .content[]? |
     [
@@ -160,9 +160,9 @@ select_backup_copy() {
       (.createTime // .createdAt // "n/a"),
       (.assetName // .asset.name // .protectedAssetName // "n/a"),
       (.location // "n/a")
-    ] | @tsv' | awk -F'\t' '{ printf "%-4s %-38s %-22s %-24s %s\n", NR".", $1, $2, $3, $4 }' >&2
+    ] | @tsv' | awk -F'\t' '{ printf "%-4s %-38s %-22s %-24s %s", NR".", $1, $2, $3, $4 }' | ppdm_out_stream
 
-  read -rp "Select copy number: " copy_num
+  ppdm_prompt copy_num "Select copy number: "
 
   [[ "$copy_num" =~ ^[0-9]+$ ]] || die "Invalid copy selection: '${copy_num}' is not a number"
   [[ "$copy_num" -ge 1 && "$copy_num" -le "$copy_count" ]] || \
@@ -196,9 +196,9 @@ list_namespace_pvcs() {
 
   log_info "Found ${#PVC_NAMES[@]} PVC(s) in namespace '${namespace}'"
 
-  echo "Available PVCs:" >&2
+  ppdm_out "Available PVCs:"
   for i in "${!PVC_NAMES[@]}"; do
-    printf "%2d) %s\n" "$((i + 1))" "${PVC_NAMES[$i]}" >&2
+    ppdm_out "$(printf '%2d) %s' "$((i + 1))" "${PVC_NAMES[$i]}")"
   done
 }
 
@@ -207,7 +207,7 @@ select_pvcs() {
   local -a choices
   local choice idx specs=""
 
-  read -rp "Select PVC numbers (comma-separated or 'all'): " selection
+  ppdm_prompt selection "Select PVC numbers (comma-separated or 'all'): "
   selection="${selection// /}"
 
   if [[ -z "$selection" ]]; then
@@ -289,13 +289,13 @@ log_info "Using RESTORE_SCRIPT=${RESTORE_SCRIPT}"
 # Step 1: Namespaces
 # ------------------------------------------------------------
 if [[ -z "$SOURCE_NAMESPACE" ]]; then
-  read -rp "Source namespace: " SOURCE_NAMESPACE
+  ppdm_prompt SOURCE_NAMESPACE "Source namespace: "
 else
   log_info "Using SOURCE_NAMESPACE from environment"
 fi
 
 if [[ -z "$TARGET_NAMESPACE" ]]; then
-  read -rp "Target namespace: " TARGET_NAMESPACE
+  ppdm_prompt TARGET_NAMESPACE "Target namespace: "
 else
   log_info "Using TARGET_NAMESPACE from environment"
 fi
@@ -329,9 +329,9 @@ PVC_SPECS="$(select_pvcs)"
 # ------------------------------------------------------------
 # Step 6: Optional restore options and execute
 # ------------------------------------------------------------
-read -rp "Target inventory source ID (optional): " TARGET_INV_ID
-read -rp "Namespace labels (key=val,... optional): " NS_LABELS
-read -rp "Namespace annotations (key=val,... optional): " NS_ANNOTATIONS
+ppdm_prompt TARGET_INV_ID "Target inventory source ID (optional): "
+ppdm_prompt NS_LABELS "Namespace labels (key=val,... optional): "
+ppdm_prompt NS_ANNOTATIONS "Namespace annotations (key=val,... optional): "
 
 run_restore \
   "$COPY_ID" \

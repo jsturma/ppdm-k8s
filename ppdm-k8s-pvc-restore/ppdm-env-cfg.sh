@@ -13,7 +13,7 @@ _ppdm_env_cfg_die() {
   if declare -F die >/dev/null 2>&1; then
     die "$@"
   fi
-  printf '[ERROR] %s\n' "$*" >&2
+  printf '[ERROR] %s\r\n' "$*" >&2
   exit 1
 }
 
@@ -21,7 +21,7 @@ _ppdm_env_cfg_log_info() {
   if declare -F log_info >/dev/null 2>&1; then
     log_info "$@"
   else
-    printf '[INFO] %s\n' "$*" >&2
+    printf '[INFO] %s\r\n' "$*" >&2
   fi
 }
 
