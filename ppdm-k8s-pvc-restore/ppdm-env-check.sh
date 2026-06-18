@@ -24,6 +24,10 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
 }
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=curl-ssl.sh
+source "${SCRIPT_DIR}/curl-ssl.sh"
+
 normalize_ppdm_url() {
   local input="$1"
   local base
@@ -78,6 +82,7 @@ authenticate() {
     -H "Content-Type: application/json"
     -d "$payload"
   )
+  append_curl_ssl_args curl_args
 
   if ! http_code="$(curl "${curl_args[@]}" 2>"$curl_error")"; then
     body="$(cat "$response_file" 2>/dev/null || true)"

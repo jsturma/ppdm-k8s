@@ -11,11 +11,13 @@ ppdm-env-check.sh  →  pvc_restore_wrapper.sh  →  ppdm-restore-selected-pvcs-
    (authenticate)        (interactive setup)            (restore execution)
                               ↑                                    ↑
                          k8s-cli.sh (sourced)              k8s-cli.sh (sourced)
+                         curl-ssl.sh (sourced)             curl-ssl.sh (sourced)
 ```
 
 | Script / library | Role |
 |------------------|------|
 | `ppdm-env-check.sh` | Connect to PPDM and obtain an API token |
+| `curl-ssl.sh` | TLS options for curl (`PPDM_CA_CERT`, `PPDM_CURL_INSECURE`); sourced by all API scripts |
 | `k8s-cli.sh` | Detect cluster CLI (`oc` or `kubectl`); sourced by wrapper and restore scripts |
 | `pvc_restore_wrapper.sh` | Interactive prompts for namespace, copy, and PVC selection |
 | `ppdm-restore-selected-pvcs-api.sh` | Submit the restore request to PPDM (`POST /api/v2/restored-copies`) |
@@ -51,6 +53,41 @@ On startup you should see:
 
 All namespace checks, PVC listing, and label/annotation commands use the selected CLI — not hard-coded `kubectl`.
 
+### TLS / self-signed certificates (`curl-ssl.sh`)
+
+PPDM often uses HTTPS with a private or self-signed CA. Scripts that call the PPDM API source **`curl-ssl.sh`** and pass TLS flags to every `curl` request.
+
+| Option | Variable | When to use |
+|--------|----------|-------------|
+| Custom CA (recommended) | `PPDM_CA_CERT` | Path to the PEM file that signed the PPDM server certificate |
+| Skip verification (lab only) | `PPDM_CURL_INSECURE=true` | Self-signed cert and you cannot provide a CA bundle — **not for production** |
+
+Aliases: `CURL_CA_CERT`, `CURL_INSECURE`, and `PPDM_INSECURE` (same meaning as `PPDM_CURL_INSECURE`).
+
+If both `PPDM_CA_CERT` and `PPDM_CURL_INSECURE` are set, the CA file takes precedence.
+
+```bash
+# Preferred: trust your PPDM CA
+export PPDM_CA_CERT=/path/to/ppdm-ca.pem
+source ./ppdm-env-check.sh
+
+# Lab / testing only
+export PPDM_CURL_INSECURE=true
+source ./ppdm-env-check.sh
+```
+
+On the first API call you should see either:
+
+```
+[INFO] Using custom CA certificate for curl: /path/to/ppdm-ca.pem
+```
+
+or (insecure mode):
+
+```
+[WARN] Curl TLS verification disabled (PPDM_CURL_INSECURE) — use only in lab/trusted networks
+```
+
 ### Access you need
 
 - **PPDM** — hostname or IP, username, and password with permission to browse assets/copies and start restores
@@ -61,7 +98,7 @@ All namespace checks, PVC listing, and label/annotation commands use the selecte
 
 ```bash
 cd ppdm-k8s-pvc-restore
-chmod +x ppdm-env-check.sh k8s-cli.sh pvc_restore_wrapper.sh ppdm-restore-selected-pvcs-api.sh
+chmod +x ppdm-env-check.sh curl-ssl.sh k8s-cli.sh pvc_restore_wrapper.sh ppdm-restore-selected-pvcs-api.sh
 ```
 
 Verify cluster access (the toolkit will prefer `oc` when both are installed):
@@ -240,6 +277,8 @@ If `PPDM_BASE_URL` is already set, it takes priority over `PPDM_HOST`. URLs are 
 | `PPDM_HOST` | user | PPDM hostname or IP (used when `PPDM_BASE_URL` is unset) |
 | `PPDM_USER` | user | PPDM username |
 | `PPDM_PASSWORD` | user | PPDM password |
+| `PPDM_CA_CERT` | user | PEM CA bundle for PPDM HTTPS (self-signed / private CA) |
+| `PPDM_CURL_INSECURE` | user | `true` = skip TLS verification for curl (lab only) |
 | `K8S_CLI` | `k8s-cli.sh` / user | Cluster CLI to use (`oc` or `kubectl`; auto-detected if unset) |
 | `SOURCE_NAMESPACE` | user | Source Kubernetes namespace |
 | `TARGET_NAMESPACE` | user | Target Kubernetes namespace (must exist for `TO_EXISTING`) |
@@ -262,6 +301,8 @@ If `PPDM_BASE_URL` is already set, it takes priority over `PPDM_HOST`. URLs are 
 | `PPDM username cannot be empty` | Blank username | Re-run and enter credentials |
 | `Failed to reach PPDM at ...: curl: (6) Could not resolve host` | DNS or network issue | Verify hostname, DNS, and firewall routes to PPDM |
 | `Failed to reach PPDM at ... (connection error)` | PPDM unreachable or TLS issue | Check PPDM is running, port `8443` is open, and certificates are valid |
+| `curl: (60) SSL certificate problem` / `unable to get local issuer certificate` | Self-signed or private CA | `export PPDM_CA_CERT=/path/to/ca.pem` or (lab only) `export PPDM_CURL_INSECURE=true` |
+| `CA certificate file not found or not readable` | Bad `PPDM_CA_CERT` path | Fix the path and file permissions |
 | `Authentication failed (HTTP 401): ...` | Invalid credentials | Verify username and password in PPDM |
 | `Authentication failed (HTTP 4xx/5xx): ...` | API or permission issue | Read the message after the HTTP code; check PPDM logs |
 | `no access_token was returned` | Unexpected API response | Confirm PPDM version supports `POST /api/v2/login` |

@@ -79,6 +79,8 @@ need_cmd() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=k8s-cli.sh
 source "${SCRIPT_DIR}/k8s-cli.sh"
+# shellcheck source=curl-ssl.sh
+source "${SCRIPT_DIR}/curl-ssl.sh"
 
 need_k8s_cli() {
   detect_k8s_cli || die "Missing required command: oc or kubectl"
@@ -128,6 +130,7 @@ ppdm_api_request() {
   if [[ -n "$payload" ]]; then
     curl_args+=(-d "$payload")
   fi
+  append_curl_ssl_args curl_args
 
   if ! http_code="$(curl "${curl_args[@]}" 2>"$curl_error")"; then
     api_error="$(cat "$curl_error" 2>/dev/null || true)"
