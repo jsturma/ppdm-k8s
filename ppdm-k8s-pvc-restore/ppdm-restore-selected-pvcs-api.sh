@@ -26,21 +26,6 @@ POLL_ACTIVITY="${POLL_ACTIVITY:-false}"
 POLL_INTERVAL_SEC="${POLL_INTERVAL_SEC:-15}"
 POLL_TIMEOUT_SEC="${POLL_TIMEOUT_SEC:-3600}"
 
-log() {
-  local level="$1"
-  shift
-  printf '[%s] [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$level" "$*" >&2
-}
-
-log_info()  { log "INFO"  "$@"; }
-log_warn()  { log "WARN"  "$@"; }
-log_error() { log "ERROR" "$@"; }
-
-die() {
-  log_error "$@"
-  exit 1
-}
-
 usage() {
   cat >&2 <<'EOF'
 Usage:
@@ -63,6 +48,10 @@ Environment:
   OVERWRITE_PVC                      Default: false
   POLL_ACTIVITY                      Poll restore activity until completion
   POLL_INTERVAL_SEC / POLL_TIMEOUT_SEC
+  PPDM_OPENSHIFT_SA                  OpenShift service account name (default: ppdm-serviceaccount)
+  PPDM_OPENSHIFT_SCC                 OpenShift SCC to grant (default: anyuid)
+  PPDM_LOG_DIR                       Log directory (default: logs/)
+  PPDM_LOG_FILE                      Reuse an existing log file from a parent script
 
 Restore type:
   This script always uses TO_EXISTING for Kubernetes PVC restore via
@@ -78,6 +67,8 @@ need_cmd() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ppdm-logging.sh
+source "${SCRIPT_DIR}/ppdm-logging.sh"
 # shellcheck source=k8s-cli.sh
 source "${SCRIPT_DIR}/k8s-cli.sh"
 # shellcheck source=curl-ssl.sh
@@ -239,19 +230,48 @@ resolve_restore_type() {
   echo "$forced"
 }
 
-warn_restore_prerequisites() {
+is_openshift_cluster() {
+  detect_k8s_cli || return 1
+  [[ "$K8S_CLI" == "oc" ]]
+}
+
+configure_openshift_restore_namespace() {
+  local target_namespace="$1"
+  local sa_name="${PPDM_OPENSHIFT_SA:-ppdm-serviceaccount}"
+  local scc_name="${PPDM_OPENSHIFT_SCC:-anyuid}"
+
+  log_info "Configuring OpenShift prerequisites in '${target_namespace}' (required for PPDM cproxy)"
+
+  if ! oc get serviceaccount "$sa_name" -n "$target_namespace" >/dev/null 2>&1; then
+    log_info "Creating service account '${sa_name}' in '${target_namespace}'"
+    oc create serviceaccount "$sa_name" -n "$target_namespace"
+  else
+    log_info "Service account '${sa_name}' already exists in '${target_namespace}'"
+  fi
+
+  log_info "Granting SCC '${scc_name}' to system:serviceaccount:${target_namespace}:${sa_name}"
+  oc adm policy add-scc-to-user "$scc_name" \
+    "system:serviceaccount:${target_namespace}:${sa_name}" \
+    -n "$target_namespace"
+}
+
+ensure_restore_target_namespace() {
   local target_namespace="$1"
 
   log_info "Restore type forced to TO_EXISTING (${PPDM_K8S_RESTORE_DOC})"
 
-  if detect_k8s_cli; then
-    if ! "$K8S_CLI" get namespace "$target_namespace" >/dev/null 2>&1; then
-      log_warn "Target namespace '${target_namespace}' not found — TO_EXISTING requires an existing namespace"
-    else
-      log_info "Verified target namespace '${target_namespace}' exists (${K8S_CLI})"
-    fi
+  detect_k8s_cli || \
+    die "oc or kubectl is required to prepare target namespace '${target_namespace}'"
+
+  if ! "$K8S_CLI" get namespace "$target_namespace" >/dev/null 2>&1; then
+    log_info "Target namespace '${target_namespace}' not found — creating it (${K8S_CLI})"
+    "$K8S_CLI" create namespace "$target_namespace"
   else
-    log_warn "oc/kubectl not available — cannot verify target namespace '${target_namespace}' exists"
+    log_info "Target namespace '${target_namespace}' already exists (${K8S_CLI})"
+  fi
+
+  if is_openshift_cluster; then
+    configure_openshift_restore_namespace "$target_namespace"
   fi
 }
 
@@ -341,7 +361,7 @@ apply_namespace_metadata() {
   fi
 
   if ! "$K8S_CLI" get namespace "$target_namespace" >/dev/null 2>&1; then
-    log_info "Target namespace '${target_namespace}' does not exist yet — skip labels/annotations (apply after restore creates it)"
+    log_warn "Target namespace '${target_namespace}' not found — skipping labels/annotations"
     return 0
   fi
 
@@ -429,6 +449,8 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
+init_ppdm_logging "ppdm-restore-selected-pvcs-api"
+
 log_info "Checking required commands..."
 need_cmd curl
 need_cmd jq
@@ -460,7 +482,7 @@ log_info "PVC-only restore: ${SKIP_NAMESPACE_RESOURCES}"
 [[ -n "$NS_ANNOTATIONS" ]] && log_info "Namespace annotations: ${NS_ANNOTATIONS}"
 
 SELECTED_RESTORE_TYPE="$(resolve_restore_type)"
-warn_restore_prerequisites "$TARGET_NAMESPACE"
+ensure_restore_target_namespace "$TARGET_NAMESPACE"
 
 PAYLOAD="$(build_restore_payload "$COPY_ID" "$TARGET_NAMESPACE" "$PVC_SPECS" "$TARGET_INV_ID" "$SELECTED_RESTORE_TYPE")" || \
   die "Failed to build restore payload"

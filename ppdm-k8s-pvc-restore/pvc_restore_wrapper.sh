@@ -6,25 +6,13 @@ set -euo pipefail
 # Requires: PPDM env file from ppdm-env-check.sh (or PPDM_* in environment)
 # ------------------------------------------------------------
 
-log() {
-  local level="$1"
-  shift
-  printf '[%s] [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$level" "$*" >&2
-}
-
-log_info()  { log "INFO"  "$@"; }
-log_error() { log "ERROR" "$@"; }
-
-die() {
-  log_error "$@"
-  exit 1
-}
-
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ppdm-logging.sh
+source "${SCRIPT_DIR}/ppdm-logging.sh"
 # shellcheck source=k8s-cli.sh
 source "${SCRIPT_DIR}/k8s-cli.sh"
 # shellcheck source=curl-ssl.sh
@@ -266,6 +254,8 @@ run_restore() {
   PPDM_BASE_URL="$PPDM_BASE_URL" \
   PPDM_TOKEN="$PPDM_TOKEN" \
   PPDM_ENV_FILE="$PPDM_ENV_FILE" \
+  PPDM_LOG_DIR="$PPDM_LOG_DIR" \
+  PPDM_LOG_FILE="$PPDM_LOG_FILE" \
     "$RESTORE_SCRIPT" \
     "$copy_id" \
     "$target_namespace" \
@@ -278,6 +268,8 @@ run_restore() {
 # ------------------------------------------------------------
 # Requirements and environment
 # ------------------------------------------------------------
+init_ppdm_logging "pvc_restore_wrapper"
+
 log_info "Checking required commands..."
 need_cmd curl
 need_cmd jq

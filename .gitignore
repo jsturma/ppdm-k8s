@@ -10,6 +10,8 @@ ppdm-k8s-pvc-restore/.ppdm-env.cfg
 pvc-restore-mapping-*.tsv
 
 # Logs and temp files
+logs/
+ppdm-k8s-pvc-restore/logs/
 *.log
 *.tmp
 *.swp

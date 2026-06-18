@@ -18,6 +18,7 @@ ppdm-env-check.sh  →  .ppdm-env.cfg  →  pvc_restore_wrapper.sh  →  ppdm-re
 | Script / library | Role |
 |------------------|------|
 | `ppdm-env-check.sh` | Connect to PPDM, obtain an API token, write `.ppdm-env.cfg` |
+| `ppdm-logging.sh` | Log to stderr and `logs/`; sourced by all main scripts |
 | `ppdm-env-cfg.sh` | Read/write the PPDM env file; used by all API scripts |
 | `curl-ssl.sh` | TLS options for curl (`PPDM_CA_CERT`, `PPDM_CURL_INSECURE`); sourced by all API scripts |
 | `k8s-cli.sh` | Detect cluster CLI (`oc` or `kubectl`); sourced by wrapper and restore scripts |
@@ -98,6 +99,18 @@ or (insecure mode):
 [WARN] Curl TLS verification disabled (PPDM_CURL_INSECURE) — use only in lab/trusted networks
 ```
 
+### Logging (`ppdm-logging.sh`)
+
+All main scripts write timestamped `[INFO]` / `[WARN]` / `[ERROR]` lines to **stderr** and to a log file under **`logs/`** (created automatically).
+
+| Run | Log file example |
+|-----|------------------|
+| `./ppdm-env-check.sh` | `logs/ppdm-env-check-20260618-163919.log` |
+| `./pvc_restore_wrapper.sh` | `logs/pvc_restore_wrapper-20260618-164500.log` |
+| `./ppdm-restore-selected-pvcs-api.sh` | Same file as wrapper when launched from it (`PPDM_LOG_FILE` is passed through) |
+
+Override the directory with `export PPDM_LOG_DIR=/path/to/logs`. Set `PPDM_LOG_FILE` to append to an existing file.
+
 ### Access you need
 
 - **PPDM** — hostname or IP, username, and password with permission to browse assets/copies and start restores
@@ -108,7 +121,7 @@ or (insecure mode):
 
 ```bash
 cd ppdm-k8s-pvc-restore
-chmod +x ppdm-env-check.sh ppdm-env-cfg.sh curl-ssl.sh k8s-cli.sh pvc_restore_wrapper.sh ppdm-restore-selected-pvcs-api.sh
+chmod +x ppdm-env-check.sh ppdm-env-cfg.sh ppdm-logging.sh curl-ssl.sh k8s-cli.sh pvc_restore_wrapper.sh ppdm-restore-selected-pvcs-api.sh
 ```
 
 Verify cluster access (the toolkit will prefer `oc` when both are installed):
@@ -141,7 +154,7 @@ You will be prompted for:
 
 #### What you should see
 
-The script writes timestamped log lines to stderr:
+The script writes timestamped log lines to stderr and to `logs/<script>-<timestamp>.log`:
 
 ```
 [2026-06-17 19:34:14] [INFO] Checking required commands...
@@ -251,10 +264,20 @@ This toolkit always submits **`TO_EXISTING`** restores via `POST /api/v2/restore
 | Behavior | Detail |
 |----------|--------|
 | Restore type | Always `TO_EXISTING` (other `RESTORE_TYPE` values are ignored with a warning) |
-| Target namespace | Must already exist in the cluster |
+| Target namespace | Created automatically if missing (`oc create namespace` / `kubectl create namespace`) |
+| OpenShift prep | When `oc` is the cluster CLI: creates `ppdm-serviceaccount` and grants `anyuid` SCC so PPDM cproxy can deploy |
 | PVC-only (default) | `skipNamespaceResources: true` with selected `persistentVolumeClaims` |
 
-If the target namespace is missing, the script logs a **warning** and continues — create the namespace first if the restore fails.
+On OpenShift, before the restore API call the script runs:
+
+```bash
+oc create serviceaccount ppdm-serviceaccount -n <target-namespace>
+oc adm policy add-scc-to-user anyuid \
+  system:serviceaccount:<target-namespace>:ppdm-serviceaccount \
+  -n <target-namespace>
+```
+
+These steps are skipped on plain Kubernetes (`kubectl` only).
 
 ---
 
@@ -287,6 +310,8 @@ If `PPDM_BASE_URL` is already set, it takes priority over `PPDM_HOST`. URLs are 
 
 | Variable | Set by | Description |
 |----------|--------|-------------|
+| `PPDM_LOG_DIR` | user / default | Directory for log files (default: `logs/` in this directory) |
+| `PPDM_LOG_FILE` | script / user | Active log file path (reused across wrapper → restore script) |
 | `PPDM_ENV_FILE` | user / default | Path to credentials file (default: `.ppdm-env.cfg` in this directory) |
 | `PPDM_BASE_URL` | `.ppdm-env.cfg` | PPDM API base URL |
 | `PPDM_TOKEN` | `.ppdm-env.cfg` | Bearer token from PPDM login |
@@ -297,7 +322,9 @@ If `PPDM_BASE_URL` is already set, it takes priority over `PPDM_HOST`. URLs are 
 | `PPDM_CURL_INSECURE` | user | `true` = skip TLS verification for curl (lab only) |
 | `K8S_CLI` | `k8s-cli.sh` / user | Cluster CLI to use (`oc` or `kubectl`; auto-detected if unset) |
 | `SOURCE_NAMESPACE` | user | Source Kubernetes namespace |
-| `TARGET_NAMESPACE` | user | Target Kubernetes namespace (must exist for `TO_EXISTING`) |
+| `TARGET_NAMESPACE` | user | Target Kubernetes namespace (created if missing) |
+| `PPDM_OPENSHIFT_SA` | user | OpenShift service account for cproxy (default: `ppdm-serviceaccount`) |
+| `PPDM_OPENSHIFT_SCC` | user | OpenShift SCC to grant (default: `anyuid`) |
 | `SKIP_NAMESPACE_RESOURCES` | user | `true` (default) = PVC-only; `false` = include namespace resources |
 | `RESTORE_SCRIPT` | user | Path to restore script (default: `./ppdm-restore-selected-pvcs-api.sh`) |
 | `MAPPING_FILE` | user | Output path for PVC mapping TSV (restore script) |
@@ -323,7 +350,7 @@ If `PPDM_BASE_URL` is already set, it takes priority over `PPDM_HOST`. URLs are 
 | `Authentication failed (HTTP 4xx/5xx): ...` | API or permission issue | Read the message after the HTTP code; check PPDM logs |
 | `no access_token was returned` | Unexpected API response | Confirm PPDM version supports `POST /api/v2/login` |
 
-All auth errors are logged as `[ERROR]` lines with a clear message. Logs go to **stderr**; normal exports go to your shell environment.
+All auth errors are logged as `[ERROR]` lines with a clear message. Logs go to **stderr** and **`logs/`**.
 
 ### Restore workflow (`pvc_restore_wrapper.sh`)
 
@@ -335,7 +362,7 @@ All auth errors are logged as `[ERROR]` lines with a clear message. Logs go to *
 | `No backup copies available for namespace` | No copies for that asset | Verify backups exist in PPDM for the source namespace |
 | `No PVCs found` | Empty namespace or wrong context | Run `oc get pvc -n <namespace>` or `kubectl get pvc -n <namespace>`; check current context |
 | `Invalid selection` | Bad copy number | Pick a number from the displayed list |
-| `Target namespace not found` (WARN) | Namespace does not exist yet | `oc create namespace <name>` or `kubectl create namespace <name>` before restore |
+| `Target namespace not found` (WARN) | Namespace missing during label/annotation step | Namespace should be created earlier in the script — check cluster permissions |
 | `RESTORE_TYPE=... ignored` (WARN) | Unsupported restore type requested | Script forces `TO_EXISTING` per PPDM API |
 | `Missing required command: oc or kubectl` | No cluster CLI in PATH | Install `oc` (OpenShift) or `kubectl`; or set `K8S_CLI` to the full path |
 | `not accessible with current oc context` | Wrong OpenShift project/context | `oc config current-context` / `oc project <namespace>` |

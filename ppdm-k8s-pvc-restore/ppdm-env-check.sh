@@ -9,26 +9,13 @@ set -euo pipefail
 # An existing env file is removed and recreated on each run.
 # ------------------------------------------------------------
 
-log() {
-  local level="$1"
-  shift
-  printf '[%s] [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$level" "$*" >&2
-}
-
-log_info()  { log "INFO"  "$@"; }
-log_warn()  { log "WARN"  "$@"; }
-log_error() { log "ERROR" "$@"; }
-
-die() {
-  log_error "$@"
-  exit 1
-}
-
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ppdm-logging.sh
+source "${SCRIPT_DIR}/ppdm-logging.sh"
 # shellcheck source=curl-ssl.sh
 source "${SCRIPT_DIR}/curl-ssl.sh"
 # shellcheck source=ppdm-env-cfg.sh
@@ -241,5 +228,6 @@ ppdm_env_check_main() {
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  init_ppdm_logging "ppdm-env-check"
   ppdm_env_check_main "$@"
 fi
