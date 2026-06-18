@@ -72,6 +72,30 @@ resolve_curl_insecure() {
   return 1
 }
 
+is_curl_ssl_error() {
+  local msg="$1"
+  case "$msg" in
+    *SSL*|*certificate*|*CERT*|*TLS*|*issuer*|*self-signed*|*self\ signed*)
+      return 0
+      ;;
+  esac
+  [[ "$msg" =~ curl:\ \([0-9]+\)\ SSL ]] && return 0
+  return 1
+}
+
+curl_ssl_error_hint() {
+  printf ' Try: export PPDM_CA_CERT=/path/to/ca.pem or export PPDM_CURL_INSECURE=true'
+}
+
+append_curl_ssl_error_hint() {
+  local msg="$1"
+  if is_curl_ssl_error "$msg"; then
+    printf '%s%s' "$msg" "$(curl_ssl_error_hint)"
+  else
+    printf '%s' "$msg"
+  fi
+}
+
 # Appends TLS-related curl flags to the named array (e.g. append_curl_ssl_args curl_args).
 append_curl_ssl_args() {
   local array_name="$1"

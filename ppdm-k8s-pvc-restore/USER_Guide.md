@@ -68,12 +68,20 @@ Aliases: `CURL_CA_CERT`, `CURL_INSECURE`, and `PPDM_INSECURE` (same meaning as `
 
 If both `PPDM_CA_CERT` and `PPDM_CURL_INSECURE` are set, the CA file takes precedence.
 
+During `./ppdm-env-check.sh`, if neither `PPDM_CA_CERT` nor `PPDM_CURL_INSECURE` is set, you are prompted:
+
+```
+Skip TLS certificate verification for self-signed PPDM certificates? (y/N):
+```
+
+Answer `y` to set `PPDM_CURL_INSECURE=true` for this run (saved to `.ppdm-env.cfg` when enabled).
+
 ```bash
-# Preferred: trust your PPDM CA
+# Non-interactive: trust your PPDM CA
 export PPDM_CA_CERT=/path/to/ppdm-ca.pem
 ./ppdm-env-check.sh
 
-# Lab / testing only
+# Non-interactive: skip verification (lab only)
 export PPDM_CURL_INSECURE=true
 ./ppdm-env-check.sh
 ```
@@ -129,6 +137,7 @@ You will be prompted for:
 | PPDM Host | `ppdm.example.com` | FQDN or IP; port `8443` is added automatically unless you include one |
 | PPDM Username | `admin` | Cannot be empty |
 | PPDM Password | *(hidden)* | Cannot be empty; not stored in the env file |
+| Skip TLS verification? | `y` or `N` | Only if `PPDM_CA_CERT` and `PPDM_CURL_INSECURE` are unset; `y` sets `PPDM_CURL_INSECURE=true` |
 
 #### What you should see
 
@@ -300,7 +309,7 @@ If `PPDM_BASE_URL` is already set, it takes priority over `PPDM_HOST`. URLs are 
 | `PPDM username cannot be empty` | Blank username | Re-run and enter credentials |
 | `Failed to reach PPDM at ...: curl: (6) Could not resolve host` | DNS or network issue | Verify hostname, DNS, and firewall routes to PPDM |
 | `Failed to reach PPDM at ... (connection error)` | PPDM unreachable or TLS issue | Check PPDM is running, port `8443` is open, and certificates are valid |
-| `curl: (60) SSL certificate problem` / `unable to get local issuer certificate` | Self-signed or private CA | `export PPDM_CA_CERT=/path/to/ca.pem` or (lab only) `export PPDM_CURL_INSECURE=true` |
+| `curl: (60) SSL certificate problem` / `unable to get local issuer certificate` | Self-signed or private CA | Re-run `./ppdm-env-check.sh` and answer `y` at the TLS prompt, or set `export PPDM_CA_CERT=/path/to/ca.pem` or `export PPDM_CURL_INSECURE=true` before running |
 | `CA certificate file not found or not readable` | Bad `PPDM_CA_CERT` path | Fix the path and file permissions |
 | `Authentication failed (HTTP 401): ...` | Invalid credentials | Verify username and password in PPDM |
 | `Authentication failed (HTTP 4xx/5xx): ...` | API or permission issue | Read the message after the HTTP code; check PPDM logs |

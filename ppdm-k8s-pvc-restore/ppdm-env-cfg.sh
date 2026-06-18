@@ -48,10 +48,9 @@ write_ppdm_env_file() {
       printf 'PPDM_CA_CERT=%q\n' "$PPDM_CA_CERT"
     fi
     if [[ -n "${PPDM_CURL_INSECURE:-}" ]]; then
-      printf 'PPDM_CURL_INSECURE=%q\n' "$PPDM_CURL_INSECURE"
-    fi
-    if [[ -n "${PPDM_INSECURE:-}" ]]; then
-      printf 'PPDM_INSECURE=%q\n' "$PPDM_INSECURE"
+      case "$(printf '%s' "$PPDM_CURL_INSECURE" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes) printf 'PPDM_CURL_INSECURE=%q\n' "true" ;;
+      esac
     fi
   } >"$tmp"
   chmod 600 "$tmp"

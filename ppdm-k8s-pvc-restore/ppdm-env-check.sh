@@ -16,6 +16,7 @@ log() {
 }
 
 log_info()  { log "INFO"  "$@"; }
+log_warn()  { log "WARN"  "$@"; }
 log_error() { log "ERROR" "$@"; }
 
 die() {
@@ -65,6 +66,60 @@ extract_api_error() {
   fi
 }
 
+configure_ppdm_tls() {
+  if [[ -n "${PPDM_CA_CERT:-}" || -n "${CURL_CA_CERT:-}" ]]; then
+    log_info "Using custom CA certificate from environment"
+    return 0
+  fi
+
+  if [[ -n "${PPDM_CURL_INSECURE:-}" ]]; then
+    if resolve_curl_insecure; then
+      export PPDM_CURL_INSECURE=true
+      log_warn "Using PPDM_CURL_INSECURE=true from environment"
+    else
+      log_info "TLS verification enabled (PPDM_CURL_INSECURE=false)"
+    fi
+    return 0
+  fi
+
+  if [[ -n "${PPDM_INSECURE:-}" ]]; then
+    if resolve_curl_insecure; then
+      export PPDM_CURL_INSECURE=true
+      log_warn "Using PPDM_INSECURE=true from environment"
+    else
+      log_info "TLS verification enabled (PPDM_INSECURE=false)"
+    fi
+    return 0
+  fi
+
+  if [[ -n "${CURL_INSECURE:-}" ]]; then
+    if resolve_curl_insecure; then
+      export PPDM_CURL_INSECURE=true
+      log_warn "Using CURL_INSECURE=true from environment"
+    else
+      log_info "TLS verification enabled (CURL_INSECURE=false)"
+    fi
+    return 0
+  fi
+
+  local answer
+  read -rp "Skip TLS certificate verification for self-signed PPDM certificates? (y/N): " answer
+  case "$(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]')" in
+    y|yes)
+      export PPDM_CURL_INSECURE=true
+      log_warn "TLS verification disabled (PPDM_CURL_INSECURE=true) — use only in lab/trusted networks"
+      ;;
+    *)
+      log_info "TLS verification enabled"
+      ;;
+  esac
+}
+
+format_ppdm_connection_error() {
+  local detail="$1"
+  append_curl_ssl_error_hint "$detail"
+}
+
 authenticate() {
   local http_code body api_error payload response_file curl_error
   local -a curl_args
@@ -94,12 +149,12 @@ authenticate() {
     api_error="$(cat "$curl_error" 2>/dev/null || true)"
     rm -f "$response_file" "$curl_error"
     if [[ -n "$api_error" ]]; then
-      die "Failed to reach PPDM at ${PPDM_BASE_URL}: ${api_error}"
+      die "Failed to reach PPDM at ${PPDM_BASE_URL}: $(format_ppdm_connection_error "$api_error")"
     fi
     if [[ -n "$body" ]]; then
-      die "Failed to reach PPDM at ${PPDM_BASE_URL}: ${body}"
+      die "Failed to reach PPDM at ${PPDM_BASE_URL}: $(format_ppdm_connection_error "$body")"
     fi
-    die "Failed to reach PPDM at ${PPDM_BASE_URL} (connection error)"
+    die "Failed to reach PPDM at ${PPDM_BASE_URL} (connection error)$(curl_ssl_error_hint)"
   fi
 
   rm -f "$curl_error"
@@ -175,6 +230,8 @@ ppdm_env_check_main() {
   fi
 
   [[ -n "$PPDM_PASSWORD" ]] || die "PPDM password cannot be empty"
+
+  configure_ppdm_tls
 
   authenticate
 
