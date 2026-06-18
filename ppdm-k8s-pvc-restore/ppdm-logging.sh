@@ -61,52 +61,47 @@ ppdm_out_stream() {
   done
 }
 
-_ppdm_read_line() {
-  local __var="$1"
-  local secret="${2:-false}"
-  local value=""
+_ppdm_read_tty() {
+  local secret="${1:-false}"
+  local _input=""
 
   if [[ "$secret" == true ]]; then
-    if [[ -r /dev/tty ]]; then
-      IFS= read -rs value </dev/tty
-    else
-      IFS= read -rs value
+    if ! IFS= read -rs _input </dev/tty 2>/dev/null; then
+      IFS= read -rs _input
     fi
   else
-    if [[ -r /dev/tty ]]; then
-      IFS= read -r value </dev/tty
-    else
-      IFS= read -r value
+    if ! IFS= read -r _input </dev/tty 2>/dev/null; then
+      IFS= read -r _input
     fi
   fi
 
-  printf -v "$__var" '%s' "$value"
+  printf '%s' "$_input"
 }
 
 # Interactive prompt: console prompt + input, then CRLF; input logged to file.
 ppdm_prompt() {
   local __var="$1"
   local prompt="$2"
-  local value=""
+  local _input=""
 
   printf '%s' "$prompt" >&2
-  _ppdm_read_line value false
+  _input="$(_ppdm_read_tty false)"
   printf '%s' "$PPDM_LOG_EOL" >&2
-  _ppdm_emit "[$(date '+%Y-%m-%d %H:%M:%S')] [INPUT] ${prompt}${value}"
-  printf -v "$__var" '%s' "$value"
+  _ppdm_emit "[$(date '+%Y-%m-%d %H:%M:%S')] [INPUT] ${prompt}${_input}"
+  printf -v "$__var" '%s' "$_input"
 }
 
 # Hidden interactive prompt (passwords).
 ppdm_prompt_secret() {
   local __var="$1"
   local prompt="$2"
-  local value=""
+  local _input=""
 
   printf '%s' "$prompt" >&2
-  _ppdm_read_line value true
+  _input="$(_ppdm_read_tty true)"
   printf '%s' "$PPDM_LOG_EOL" >&2
   _ppdm_emit "[$(date '+%Y-%m-%d %H:%M:%S')] [INPUT] ${prompt}<redacted>"
-  printf -v "$__var" '%s' "$value"
+  printf -v "$__var" '%s' "$_input"
 }
 
 init_ppdm_logging() {
