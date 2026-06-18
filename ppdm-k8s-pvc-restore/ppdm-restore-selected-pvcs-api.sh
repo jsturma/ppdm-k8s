@@ -11,7 +11,7 @@ set -euo pipefail
 # PVC_SPECS: comma-separated PVC names, or "name:storageClass" pairs.
 #             Leave empty to restore all PVCs in the copy.
 #
-# Requires: PPDM_BASE_URL, PPDM_TOKEN
+# Requires: PPDM env file from ppdm-env-check.sh (or PPDM_* in environment)
 # ------------------------------------------------------------
 
 # API reference:
@@ -56,7 +56,8 @@ Arguments:
   NS_ANNOTATIONS    Optional namespace annotations (key=val,...)
 
 Environment:
-  PPDM_BASE_URL, PPDM_TOKEN          Required (from ppdm-env-check.sh)
+  PPDM_BASE_URL, PPDM_TOKEN          Required (from .ppdm-env.cfg or environment)
+  PPDM_ENV_FILE                      Path to env file (default: .ppdm-env.cfg)
   MAPPING_FILE                       Output mapping file path
   SKIP_NAMESPACE_RESOURCES           Default: true (PVC-only restore)
   OVERWRITE_PVC                      Default: false
@@ -81,6 +82,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/k8s-cli.sh"
 # shellcheck source=curl-ssl.sh
 source "${SCRIPT_DIR}/curl-ssl.sh"
+# shellcheck source=ppdm-env-cfg.sh
+source "${SCRIPT_DIR}/ppdm-env-cfg.sh"
 
 need_k8s_cli() {
   detect_k8s_cli || die "Missing required command: oc or kubectl"
@@ -431,8 +434,7 @@ need_cmd curl
 need_cmd jq
 log_info "Required commands available"
 
-[[ -n "${PPDM_BASE_URL:-}" ]] || die "PPDM_BASE_URL is not set — run: source ./ppdm-env-check.sh"
-[[ -n "${PPDM_TOKEN:-}" ]] || die "PPDM_TOKEN is not set — run: source ./ppdm-env-check.sh"
+ensure_ppdm_env
 
 COPY_ID="${1:-}"
 TARGET_NAMESPACE="${2:-}"

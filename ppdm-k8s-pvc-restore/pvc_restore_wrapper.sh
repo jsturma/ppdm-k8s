@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ------------------------------------------------------------
 # PPDM Kubernetes PVC Restore Wrapper
-# Requires: PPDM_BASE_URL, PPDM_TOKEN
+# Requires: PPDM env file from ppdm-env-check.sh (or PPDM_* in environment)
 # ------------------------------------------------------------
 
 log() {
@@ -29,6 +29,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/k8s-cli.sh"
 # shellcheck source=curl-ssl.sh
 source "${SCRIPT_DIR}/curl-ssl.sh"
+# shellcheck source=ppdm-env-cfg.sh
+source "${SCRIPT_DIR}/ppdm-env-cfg.sh"
 
 need_k8s_cli() {
   detect_k8s_cli || die "Missing required command: oc or kubectl"
@@ -233,6 +235,9 @@ run_restore() {
   log_info "PVC specs: ${pvc_specs:-<all>}"
 
   SOURCE_NAMESPACE="$SOURCE_NAMESPACE" \
+  PPDM_BASE_URL="$PPDM_BASE_URL" \
+  PPDM_TOKEN="$PPDM_TOKEN" \
+  PPDM_ENV_FILE="$PPDM_ENV_FILE" \
     "$RESTORE_SCRIPT" \
     "$copy_id" \
     "$target_namespace" \
@@ -251,8 +256,7 @@ need_cmd jq
 need_k8s_cli
 log_info "Required commands available"
 
-[[ -n "${PPDM_BASE_URL:-}" ]] || die "PPDM_BASE_URL is not set — run: source ./ppdm-env-check.sh"
-[[ -n "${PPDM_TOKEN:-}" ]] || die "PPDM_TOKEN is not set — run: source ./ppdm-env-check.sh"
+ensure_ppdm_env
 
 SOURCE_NAMESPACE="${SOURCE_NAMESPACE:-}"
 TARGET_NAMESPACE="${TARGET_NAMESPACE:-}"

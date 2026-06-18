@@ -7,16 +7,18 @@ This guide walks you through restoring Kubernetes PersistentVolumeClaims (PVCs) 
 The toolkit authenticates to PPDM, helps you pick a backup copy and PVCs, then submits a restore job to the PPDM REST API.
 
 ```
-ppdm-env-check.sh  →  pvc_restore_wrapper.sh  →  ppdm-restore-selected-pvcs-api.sh
-   (authenticate)        (interactive setup)            (restore execution)
+ppdm-env-check.sh  →  .ppdm-env.cfg  →  pvc_restore_wrapper.sh  →  ppdm-restore-selected-pvcs-api.sh
+   (authenticate)      (credentials)        (interactive setup)            (restore execution)
                               ↑                                    ↑
                          k8s-cli.sh (sourced)              k8s-cli.sh (sourced)
                          curl-ssl.sh (sourced)             curl-ssl.sh (sourced)
+                         ppdm-env-cfg.sh (sourced)       ppdm-env-cfg.sh (sourced)
 ```
 
 | Script / library | Role |
 |------------------|------|
-| `ppdm-env-check.sh` | Connect to PPDM and obtain an API token |
+| `ppdm-env-check.sh` | Connect to PPDM, obtain an API token, write `.ppdm-env.cfg` |
+| `ppdm-env-cfg.sh` | Read/write the PPDM env file; used by all API scripts |
 | `curl-ssl.sh` | TLS options for curl (`PPDM_CA_CERT`, `PPDM_CURL_INSECURE`); sourced by all API scripts |
 | `k8s-cli.sh` | Detect cluster CLI (`oc` or `kubectl`); sourced by wrapper and restore scripts |
 | `pvc_restore_wrapper.sh` | Interactive prompts for namespace, copy, and PVC selection |
@@ -69,11 +71,11 @@ If both `PPDM_CA_CERT` and `PPDM_CURL_INSECURE` are set, the CA file takes prece
 ```bash
 # Preferred: trust your PPDM CA
 export PPDM_CA_CERT=/path/to/ppdm-ca.pem
-source ./ppdm-env-check.sh
+./ppdm-env-check.sh
 
 # Lab / testing only
 export PPDM_CURL_INSECURE=true
-source ./ppdm-env-check.sh
+./ppdm-env-check.sh
 ```
 
 On the first API call you should see either:
@@ -98,7 +100,7 @@ or (insecure mode):
 
 ```bash
 cd ppdm-k8s-pvc-restore
-chmod +x ppdm-env-check.sh curl-ssl.sh k8s-cli.sh pvc_restore_wrapper.sh ppdm-restore-selected-pvcs-api.sh
+chmod +x ppdm-env-check.sh ppdm-env-cfg.sh curl-ssl.sh k8s-cli.sh pvc_restore_wrapper.sh ppdm-restore-selected-pvcs-api.sh
 ```
 
 Verify cluster access (the toolkit will prefer `oc` when both are installed):
@@ -114,10 +116,10 @@ oc get pvc -n <your-source-namespace> 2>/dev/null || kubectl get pvc -n <your-so
 
 ### Step 1 — Authenticate to PPDM
 
-Run the auth script **in your current shell** so exported variables are available to the next script:
+Run the auth script as a normal executable. It writes credentials to **`.ppdm-env.cfg`** (mode `600`) in this directory. If that file already exists, it is removed and recreated with fresh values.
 
 ```bash
-source ./ppdm-env-check.sh
+./ppdm-env-check.sh
 ```
 
 You will be prompted for:
@@ -126,7 +128,7 @@ You will be prompted for:
 |--------|---------|-------|
 | PPDM Host | `ppdm.example.com` | FQDN or IP; port `8443` is added automatically unless you include one |
 | PPDM Username | `admin` | Cannot be empty |
-| PPDM Password | *(hidden)* | Cannot be empty; not logged by the script |
+| PPDM Password | *(hidden)* | Cannot be empty; not stored in the env file |
 
 #### What you should see
 
@@ -138,17 +140,13 @@ The script writes timestamped log lines to stderr:
 [2026-06-17 19:34:14] [INFO] Using PPDM_BASE_URL=https://ppdm.example.com:8443
 [2026-06-17 19:34:14] [INFO] Authenticating to PPDM at https://ppdm.example.com:8443...
 [2026-06-17 19:34:15] [INFO] Authentication successful (HTTP 200)
-[2026-06-17 19:34:15] [INFO] Environment ready: PPDM_BASE_URL and PPDM_TOKEN exported
+[2026-06-17 19:34:15] [INFO] Wrote PPDM env file: .../ppdm-k8s-pvc-restore/.ppdm-env.cfg
+[2026-06-17 19:34:15] [INFO] Environment ready: credentials saved to .../ppdm-k8s-pvc-restore/.ppdm-env.cfg
 ```
 
-Confirm the variables are set:
+The env file contains `PPDM_BASE_URL`, `PPDM_TOKEN`, and TLS settings (`PPDM_CA_CERT` / `PPDM_CURL_INSECURE`) when set. Passwords are **not** saved.
 
-```bash
-echo "$PPDM_BASE_URL"
-# PPDM_TOKEN is set but should not be printed in shared logs
-```
-
-> **Important:** Do not run `bash ./ppdm-env-check.sh` in a subshell unless you capture exports manually — `source` keeps `PPDM_BASE_URL` and `PPDM_TOKEN` in your session.
+> **No `source` required.** Other scripts load `.ppdm-env.cfg` automatically. Override the path with `export PPDM_ENV_FILE=/path/to/custom.cfg`.
 
 ---
 
@@ -251,7 +249,7 @@ Set environment variables before running to reduce prompts:
 export PPDM_HOST=ppdm.example.com
 export PPDM_USER=admin
 export PPDM_PASSWORD='your-password'
-source ./ppdm-env-check.sh
+./ppdm-env-check.sh
 
 export SOURCE_NAMESPACE=my-app
 export TARGET_NAMESPACE=my-app-restored
@@ -272,8 +270,9 @@ If `PPDM_BASE_URL` is already set, it takes priority over `PPDM_HOST`. URLs are 
 
 | Variable | Set by | Description |
 |----------|--------|-------------|
-| `PPDM_BASE_URL` | `ppdm-env-check.sh` | PPDM API base URL |
-| `PPDM_TOKEN` | `ppdm-env-check.sh` | Bearer token from PPDM login |
+| `PPDM_ENV_FILE` | user / default | Path to credentials file (default: `.ppdm-env.cfg` in this directory) |
+| `PPDM_BASE_URL` | `.ppdm-env.cfg` | PPDM API base URL |
+| `PPDM_TOKEN` | `.ppdm-env.cfg` | Bearer token from PPDM login |
 | `PPDM_HOST` | user | PPDM hostname or IP (used when `PPDM_BASE_URL` is unset) |
 | `PPDM_USER` | user | PPDM username |
 | `PPDM_PASSWORD` | user | PPDM password |
@@ -313,8 +312,8 @@ All auth errors are logged as `[ERROR]` lines with a clear message. Logs go to *
 
 | Error | Likely cause | What to try |
 |-------|--------------|-------------|
-| `PPDM_BASE_URL is not set` | Auth step skipped or run in subshell | Run `source ./ppdm-env-check.sh` in the same shell first |
-| `PPDM_TOKEN is not set` | Auth failed or session cleared | Re-authenticate |
+| `PPDM env file not found` | Auth step not run | Run `./ppdm-env-check.sh` first |
+| `PPDM env file is missing PPDM_TOKEN` | Corrupt or hand-edited cfg | Re-run `./ppdm-env-check.sh` to recreate the file |
 | `Namespace asset not found` | Namespace not protected in PPDM | Confirm the namespace is registered as a K8s namespace asset |
 | `No PVCs found` | Empty namespace or wrong context | Run `oc get pvc -n <namespace>` or `kubectl get pvc -n <namespace>`; check current context |
 | `Invalid selection` | Bad copy number | Pick a number from the displayed list |
@@ -337,12 +336,13 @@ All auth errors are logged as `[ERROR]` lines with a clear message. Logs go to *
 
 ## Security notes
 
-- Run `ppdm-env-check.sh` separately so credentials stay out of the restore scripts.
-- Prefer `read -rsp` prompts over exporting `PPDM_PASSWORD` in shell history when working interactively.
+- Run `./ppdm-env-check.sh` before restore scripts; credentials live in `.ppdm-env.cfg` (gitignored, mode `600`).
+- Prefer interactive password prompts over exporting `PPDM_PASSWORD` in shell history.
 - Do not log or share `PPDM_TOKEN` — treat it like a password.
-- Clear sensitive variables when finished:
+- Remove the env file when finished:
 
 ```bash
+rm -f .ppdm-env.cfg
 unset PPDM_PASSWORD PPDM_TOKEN
 ```
 
@@ -353,7 +353,7 @@ unset PPDM_PASSWORD PPDM_TOKEN
 ```bash
 # Full interactive flow
 cd ppdm-k8s-pvc-restore
-source ./ppdm-env-check.sh
+./ppdm-env-check.sh
 ./pvc_restore_wrapper.sh
 ```
 

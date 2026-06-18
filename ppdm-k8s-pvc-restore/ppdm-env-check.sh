@@ -3,7 +3,10 @@ set -euo pipefail
 
 # ------------------------------------------------------------
 # PPDM environment check and authentication
-# Exports: PPDM_BASE_URL, PPDM_TOKEN
+#
+# Writes PPDM_BASE_URL and PPDM_TOKEN to PPDM_ENV_FILE (default:
+# .ppdm-env.cfg in this directory) for use by other scripts.
+# An existing env file is removed and recreated on each run.
 # ------------------------------------------------------------
 
 log() {
@@ -27,6 +30,8 @@ need_cmd() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=curl-ssl.sh
 source "${SCRIPT_DIR}/curl-ssl.sh"
+# shellcheck source=ppdm-env-cfg.sh
+source "${SCRIPT_DIR}/ppdm-env-cfg.sh"
 
 normalize_ppdm_url() {
   local input="$1"
@@ -129,59 +134,55 @@ authenticate() {
   die "Authentication failed (HTTP ${http_code})"
 }
 
-# ------------------------------------------------------------
-# Requirements
-# ------------------------------------------------------------
-log_info "Checking required commands..."
-need_cmd curl
-need_cmd jq
-log_info "Required commands available"
+ppdm_env_check_main() {
+  log_info "Checking required commands..."
+  need_cmd curl
+  need_cmd jq
+  log_info "Required commands available"
 
-# ------------------------------------------------------------
-# Step 0: Determine PPDM_BASE_URL
-# Priority:
-#   1) If PPDM_BASE_URL already provided → normalize it
-#   2) Else use PPDM_HOST (prompt if missing)
-# ------------------------------------------------------------
-if [[ -n "${PPDM_BASE_URL:-}" ]]; then
-  log_info "Normalizing provided PPDM_BASE_URL"
-  PPDM_BASE_URL="$(normalize_ppdm_url "$PPDM_BASE_URL")"
-else
-  if [[ -z "${PPDM_HOST:-}" ]]; then
-    read -rp "PPDM Host (FQDN or IP, no port): " PPDM_HOST
+  wipe_ppdm_env_file
+
+  # Step 0: Determine PPDM_BASE_URL
+  if [[ -n "${PPDM_BASE_URL:-}" ]]; then
+    log_info "Normalizing provided PPDM_BASE_URL"
+    PPDM_BASE_URL="$(normalize_ppdm_url "$PPDM_BASE_URL")"
   else
-    log_info "Using PPDM_HOST from environment"
+    if [[ -z "${PPDM_HOST:-}" ]]; then
+      read -rp "PPDM Host (FQDN or IP, no port): " PPDM_HOST
+    else
+      log_info "Using PPDM_HOST from environment"
+    fi
+
+    PPDM_BASE_URL="$(normalize_ppdm_url "$PPDM_HOST")"
   fi
 
-  PPDM_BASE_URL="$(normalize_ppdm_url "$PPDM_HOST")"
+  export PPDM_BASE_URL
+  log_info "Using PPDM_BASE_URL=${PPDM_BASE_URL}"
+
+  if [[ -z "${PPDM_USER:-}" ]]; then
+    read -rp "PPDM Username: " PPDM_USER
+  else
+    log_info "Using PPDM_USER from environment"
+  fi
+
+  [[ -n "$PPDM_USER" ]] || die "PPDM username cannot be empty"
+
+  if [[ -z "${PPDM_PASSWORD:-}" ]]; then
+    read -rsp "PPDM Password: " PPDM_PASSWORD
+    echo
+  else
+    log_info "Using PPDM_PASSWORD from environment"
+  fi
+
+  [[ -n "$PPDM_PASSWORD" ]] || die "PPDM password cannot be empty"
+
+  authenticate
+
+  write_ppdm_env_file
+
+  log_info "Environment ready: credentials saved to ${PPDM_ENV_FILE}"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  ppdm_env_check_main "$@"
 fi
-
-export PPDM_BASE_URL
-log_info "Using PPDM_BASE_URL=${PPDM_BASE_URL}"
-
-# ------------------------------------------------------------
-# Prompt for credentials if not provided
-# ------------------------------------------------------------
-if [[ -z "${PPDM_USER:-}" ]]; then
-  read -rp "PPDM Username: " PPDM_USER
-else
-  log_info "Using PPDM_USER from environment"
-fi
-
-[[ -n "$PPDM_USER" ]] || die "PPDM username cannot be empty"
-
-if [[ -z "${PPDM_PASSWORD:-}" ]]; then
-  read -rsp "PPDM Password: " PPDM_PASSWORD
-  echo
-else
-  log_info "Using PPDM_PASSWORD from environment"
-fi
-
-[[ -n "$PPDM_PASSWORD" ]] || die "PPDM password cannot be empty"
-
-# ------------------------------------------------------------
-# Step 1: Authenticate
-# ------------------------------------------------------------
-authenticate
-
-log_info "Environment ready: PPDM_BASE_URL and PPDM_TOKEN exported"

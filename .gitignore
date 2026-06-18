@@ -3,6 +3,8 @@
 .env.*
 *.pem
 *.key
+.ppdm-env.cfg
+ppdm-k8s-pvc-restore/.ppdm-env.cfg
 
 # Restore script output
 pvc-restore-mapping-*.tsv
