@@ -125,26 +125,54 @@ find_namespace_asset() {
   echo "$asset_id"
 }
 
+filter_copies_json_for_asset() {
+  local copies="$1"
+  local asset_id="$2"
+  local namespace="$3"
+
+  echo "$copies" | jq -c --arg aid "$asset_id" --arg ns "$namespace" '
+    {content: [.content[]? | select(
+      ((.assetId // .asset.id // "") == $aid) or
+      ((.assetName // .asset.name // .protectedAssetName // "") == $ns)
+    )]}
+  '
+}
+
 select_backup_copy() {
-  local copies copy_count copy_num copy_id
+  local asset_id="$1"
+  local namespace="$2"
+  local copies filtered_copies copy_count copy_num copy_id filter encoded_filter
+
+  [[ -n "$asset_id" ]] || die "Asset ID is required to list backup copies"
+  [[ -n "$namespace" ]] || die "Namespace is required to list backup copies"
+
+  filter="assetId eq \"${asset_id}\""
+  encoded_filter="$(printf '%s' "$filter" | jq -sRr @uri)"
 
   copies="$(ppdm_api_get \
-    "${PPDM_BASE_URL}/api/v2/copies" \
-    "Fetching available backup copies")"
+    "${PPDM_BASE_URL}/api/v2/copies?filter=${encoded_filter}" \
+    "Fetching backup copies for namespace '${namespace}'")"
 
-  copy_count="$(echo "$copies" | jq -r '.content | length')" || \
+  filtered_copies="$(filter_copies_json_for_asset "$copies" "$asset_id" "$namespace")"
+
+  copy_count="$(echo "$filtered_copies" | jq -r '.content | length')" || \
     die "Failed to parse copies response (invalid JSON)"
 
   [[ "$copy_count" =~ ^[0-9]+$ && "$copy_count" -gt 0 ]] || \
-    die "No backup copies available"
+    die "No backup copies available for namespace '${namespace}' (asset ${asset_id})"
 
-  log_info "Found ${copy_count} backup copies"
+  log_info "Found ${copy_count} backup copy/copies for namespace '${namespace}'"
 
   echo "Available copies:" >&2
-  echo "$copies" | jq -r '
+  printf '%-4s %-38s %-22s %-24s %s\n' '#' 'Copy ID' 'Create Time' 'AssetName' 'Location' >&2
+  echo "$filtered_copies" | jq -r '
     .content[]? |
-    [.id, (.createTime // .createdAt // "n/a"), (.location // "n/a")] |
-    @tsv' | nl -w2 -s'. ' >&2
+    [
+      .id,
+      (.createTime // .createdAt // "n/a"),
+      (.assetName // .asset.name // .protectedAssetName // "n/a"),
+      (.location // "n/a")
+    ] | @tsv' | awk -F'\t' '{ printf "%-4s %-38s %-22s %-24s %s\n", NR".", $1, $2, $3, $4 }' >&2
 
   read -rp "Select copy number: " copy_num
 
@@ -152,7 +180,7 @@ select_backup_copy() {
   [[ "$copy_num" -ge 1 && "$copy_num" -le "$copy_count" ]] || \
     die "Invalid copy selection: choose a number between 1 and ${copy_count}"
 
-  copy_id="$(echo "$copies" | jq -r ".content[$((copy_num - 1))].id")" || \
+  copy_id="$(echo "$filtered_copies" | jq -r ".content[$((copy_num - 1))].id")" || \
     die "Failed to read selected copy (invalid JSON)"
 
   [[ -n "$copy_id" && "$copy_id" != "null" ]] || die "Invalid copy selection: no copy ID returned"
@@ -289,12 +317,12 @@ log_info "Target namespace: ${TARGET_NAMESPACE}"
 # ------------------------------------------------------------
 # Step 2: Find namespace asset
 # ------------------------------------------------------------
-find_namespace_asset "$SOURCE_NAMESPACE" >/dev/null
+ASSET_ID="$(find_namespace_asset "$SOURCE_NAMESPACE")"
 
 # ------------------------------------------------------------
 # Step 3: Select copy
 # ------------------------------------------------------------
-COPY_ID="$(select_backup_copy)"
+COPY_ID="$(select_backup_copy "$ASSET_ID" "$SOURCE_NAMESPACE")"
 
 # ------------------------------------------------------------
 # Step 4: List PVCs

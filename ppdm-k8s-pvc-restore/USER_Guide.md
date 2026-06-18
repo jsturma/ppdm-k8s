@@ -190,12 +190,20 @@ The script searches PPDM for a Kubernetes namespace asset matching the source na
 
 #### 2c. Select a backup copy
 
-A numbered list of copies is shown with ID, creation time, and location:
+Only copies for the **source namespace** are listed. The script looks up the namespace asset in PPDM, then queries copies with `assetId eq "<asset-id>"` and filters by asset ID / asset name.
+
+| Column | Description |
+|--------|-------------|
+| Copy ID | PPDM backup copy identifier |
+| Create Time | When the copy was created |
+| AssetName | Protected asset name (should match the source namespace) |
+| Location | Copy storage location |
 
 ```
 Available copies:
- 1. abc123...   2026-06-10T12:00:00Z   primary
- 2. def456...   2026-06-09T12:00:00Z   primary
+#    Copy ID                                Create Time            AssetName                Location
+1.   abc123...                              2026-06-10T12:00:00Z   my-app                   primary
+2.   def456...                              2026-06-09T12:00:00Z   my-app                   primary
 Select copy number:
 ```
 
@@ -324,6 +332,7 @@ All auth errors are logged as `[ERROR]` lines with a clear message. Logs go to *
 | `PPDM env file not found` | Auth step not run | Run `./ppdm-env-check.sh` first |
 | `PPDM env file is missing PPDM_TOKEN` | Corrupt or hand-edited cfg | Re-run `./ppdm-env-check.sh` to recreate the file |
 | `Namespace asset not found` | Namespace not protected in PPDM | Confirm the namespace is registered as a K8s namespace asset |
+| `No backup copies available for namespace` | No copies for that asset | Verify backups exist in PPDM for the source namespace |
 | `No PVCs found` | Empty namespace or wrong context | Run `oc get pvc -n <namespace>` or `kubectl get pvc -n <namespace>`; check current context |
 | `Invalid selection` | Bad copy number | Pick a number from the displayed list |
 | `Target namespace not found` (WARN) | Namespace does not exist yet | `oc create namespace <name>` or `kubectl create namespace <name>` before restore |
