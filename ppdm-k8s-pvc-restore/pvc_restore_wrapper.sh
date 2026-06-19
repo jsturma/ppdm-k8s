@@ -276,6 +276,8 @@ run_restore() {
   local target_inv_id="$4"
   local ns_labels="$5"
   local ns_annotations="$6"
+  local create_target_namespace="$7"
+  local configure_openshift_restore="$8"
 
   [[ -f "$RESTORE_SCRIPT" ]] || die "Restore script not found: ${RESTORE_SCRIPT}"
   [[ -x "$RESTORE_SCRIPT" ]] || die "Restore script is not executable: ${RESTORE_SCRIPT}"
@@ -284,8 +286,8 @@ run_restore() {
   log_info "Source namespace: ${SOURCE_NAMESPACE}"
   log_info "Target namespace: ${target_namespace}"
   log_info "PVC specs: ${pvc_specs:-<all>}"
-  log_info "Create target namespace: ${CREATE_TARGET_NAMESPACE}"
-  log_info "Configure OpenShift restore: ${CONFIGURE_OPENSHIFT_RESTORE}"
+  log_info "Create target namespace: ${create_target_namespace}"
+  log_info "Configure OpenShift restore: ${configure_openshift_restore}"
 
   SOURCE_NAMESPACE="$SOURCE_NAMESPACE" \
   PPDM_BASE_URL="$PPDM_BASE_URL" \
@@ -293,15 +295,15 @@ run_restore() {
   PPDM_ENV_FILE="$PPDM_ENV_FILE" \
   PPDM_LOG_DIR="$PPDM_LOG_DIR" \
   PPDM_LOG_FILE="$PPDM_LOG_FILE" \
-  CREATE_TARGET_NAMESPACE="$CREATE_TARGET_NAMESPACE" \
-  CONFIGURE_OPENSHIFT_RESTORE="$CONFIGURE_OPENSHIFT_RESTORE" \
     "$RESTORE_SCRIPT" \
     "$copy_id" \
     "$target_namespace" \
     "$pvc_specs" \
     "$target_inv_id" \
     "$ns_labels" \
-    "$ns_annotations"
+    "$ns_annotations" \
+    "$create_target_namespace" \
+    "$configure_openshift_restore"
 }
 
 # ------------------------------------------------------------
@@ -393,6 +395,8 @@ run_restore \
   "$PVC_SPECS" \
   "$TARGET_INV_ID" \
   "$NS_LABELS" \
-  "$NS_ANNOTATIONS"
+  "$NS_ANNOTATIONS" \
+  "$CREATE_TARGET_NAMESPACE" \
+  "$CONFIGURE_OPENSHIFT_RESTORE"
 
 log_info "Restore workflow completed"

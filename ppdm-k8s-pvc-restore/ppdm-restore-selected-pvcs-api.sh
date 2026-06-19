@@ -6,7 +6,8 @@ set -euo pipefail
 #
 # Usage:
 #   ppdm-restore-selected-pvcs-api.sh COPY_ID TARGET_NAMESPACE [PVC_SPECS] \
-#       [TARGET_INV_ID] [NS_LABELS] [NS_ANNOTATIONS]
+#       [TARGET_INV_ID] [NS_LABELS] [NS_ANNOTATIONS] \
+#       [CREATE_TARGET_NAMESPACE] [CONFIGURE_OPENSHIFT_RESTORE]
 #
 # PVC_SPECS: comma-separated PVC names, or "name:storageClass" pairs.
 #             Leave empty to restore all PVCs in the copy.
@@ -20,8 +21,6 @@ PPDM_K8S_RESTORE_DOC="https://developer.dell.com/apis/4378/versions/20.1.0/backu
 
 MAPPING_FILE="${MAPPING_FILE:-pvc-restore-mapping-$(date +%Y%m%d-%H%M%S).tsv}"
 SKIP_NAMESPACE_RESOURCES="${SKIP_NAMESPACE_RESOURCES:-true}"
-CREATE_TARGET_NAMESPACE="${CREATE_TARGET_NAMESPACE:-false}"
-CONFIGURE_OPENSHIFT_RESTORE="${CONFIGURE_OPENSHIFT_RESTORE:-false}"
 RESTORE_TYPE="${RESTORE_TYPE:-}"
 OVERWRITE_PVC="${OVERWRITE_PVC:-false}"
 POLL_ACTIVITY="${POLL_ACTIVITY:-false}"
@@ -32,23 +31,24 @@ usage() {
   cat >&2 <<'EOF'
 Usage:
   ppdm-restore-selected-pvcs-api.sh COPY_ID TARGET_NAMESPACE [PVC_SPECS] \
-      [TARGET_INV_ID] [NS_LABELS] [NS_ANNOTATIONS]
+      [TARGET_INV_ID] [NS_LABELS] [NS_ANNOTATIONS] \
+      [CREATE_TARGET_NAMESPACE] [CONFIGURE_OPENSHIFT_RESTORE]
 
 Arguments:
-  COPY_ID           PPDM backup copy ID
-  TARGET_NAMESPACE  Destination Kubernetes namespace
-  PVC_SPECS         Optional comma-separated PVC names, or name:storageClass pairs
-  TARGET_INV_ID     Optional target cluster inventory source ID
-  NS_LABELS         Optional namespace labels (key=val,...)
-  NS_ANNOTATIONS    Optional namespace annotations (key=val,...)
+  COPY_ID                      PPDM backup copy ID
+  TARGET_NAMESPACE             Destination Kubernetes namespace
+  PVC_SPECS                    Optional comma-separated PVC names, or name:storageClass pairs
+  TARGET_INV_ID                Optional target cluster inventory source ID
+  NS_LABELS                    Optional namespace labels (key=val,...)
+  NS_ANNOTATIONS               Optional namespace annotations (key=val,...)
+  CREATE_TARGET_NAMESPACE      Optional true/false — create target namespace if missing (default: false)
+  CONFIGURE_OPENSHIFT_RESTORE  Optional true/false — OpenShift SA + SCC for PPDM cproxy (default: false)
 
 Environment:
   PPDM_BASE_URL, PPDM_TOKEN          Required (from .ppdm-env.cfg or environment)
   PPDM_ENV_FILE                      Path to env file (default: .ppdm-env.cfg)
   MAPPING_FILE                       Output mapping file path
   SKIP_NAMESPACE_RESOURCES           Default: true (PVC-only restore)
-  CREATE_TARGET_NAMESPACE            Default: false (create target namespace if missing)
-  CONFIGURE_OPENSHIFT_RESTORE        Default: false (OpenShift SA + SCC for PPDM cproxy)
   OVERWRITE_PVC                      Default: false
   POLL_ACTIVITY                      Poll restore activity until completion
   POLL_INTERVAL_SEC / POLL_TIMEOUT_SEC
@@ -482,6 +482,8 @@ PVC_SPECS="${3:-}"
 TARGET_INV_ID="${4:-}"
 NS_LABELS="${5:-}"
 NS_ANNOTATIONS="${6:-}"
+CREATE_TARGET_NAMESPACE="${7:-false}"
+CONFIGURE_OPENSHIFT_RESTORE="${8:-false}"
 SOURCE_NAMESPACE="${SOURCE_NAMESPACE:-}"
 
 [[ -n "$COPY_ID" && -n "$TARGET_NAMESPACE" ]] || {
