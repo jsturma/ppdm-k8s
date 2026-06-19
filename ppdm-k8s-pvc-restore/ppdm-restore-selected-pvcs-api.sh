@@ -13,6 +13,7 @@ set -euo pipefail
 #             Leave empty to restore all PVCs in the copy.
 #
 # Requires: PPDM env file from ppdm-env-check.sh (or PPDM_* in environment)
+# User guide: USER_Guide.md (keep in sync when changing usage or arguments)
 # ------------------------------------------------------------
 
 # API reference:

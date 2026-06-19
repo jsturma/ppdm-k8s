@@ -2,6 +2,8 @@
 
 This guide walks you through restoring Kubernetes PersistentVolumeClaims (PVCs) from [Dell PowerProtect Data Manager (PPDM)](https://www.dell.com/en-us/dt/data-protection/powerprotect-data-manager.htm) backups using the scripts in this directory.
 
+> **Maintainers:** When you change interactive prompts, script arguments, defaults, or API behavior in `pvc_restore_wrapper.sh` or `ppdm-restore-selected-pvcs-api.sh`, update this guide in the same change (sections: workflow prompts, argument list, environment table, troubleshooting).
+
 ## What this toolkit does
 
 The toolkit authenticates to PPDM, helps you pick a backup copy and PVCs, then submits a restore job to the PPDM REST API.
@@ -22,8 +24,8 @@ ppdm-env-check.sh  →  .ppdm-env.cfg  →  pvc_restore_wrapper.sh  →  ppdm-re
 | `ppdm-env-cfg.sh` | Read/write the PPDM env file; used by all API scripts |
 | `curl-ssl.sh` | TLS options for curl (`PPDM_CA_CERT`, `PPDM_CURL_INSECURE`); sourced by all API scripts |
 | `k8s-cli.sh` | Detect cluster CLI (`oc` or `kubectl`); sourced by wrapper and restore scripts |
-| `pvc_restore_wrapper.sh` | Interactive prompts for namespace, copy, and PVC selection |
-| `ppdm-restore-selected-pvcs-api.sh` | Submit the restore request to PPDM (`POST /api/v2/restored-copies`) |
+| `pvc_restore_wrapper.sh` | Interactive workflow: namespaces, backup copy, PPDM PVC selection, optional target prep |
+| `ppdm-restore-selected-pvcs-api.sh` | Submit restore to PPDM; optional target namespace create and OpenShift SA/SCC prep |
 
 ---
 
@@ -36,7 +38,7 @@ ppdm-env-check.sh  →  .ppdm-env.cfg  →  pvc_restore_wrapper.sh  →  ppdm-re
 | `bash` | Run the scripts |
 | `curl` | Call the PPDM REST API |
 | `jq` | Parse API responses |
-| `kubectl` or `oc` | List PVCs and verify namespaces (auto-selected — see `k8s-cli.sh`) |
+| `kubectl` or `oc` | Optional cluster checks and target prep (auto-selected — see `k8s-cli.sh`) |
 
 ### Cluster CLI (`k8s-cli.sh`)
 
@@ -54,7 +56,9 @@ On startup you should see:
 [INFO] Using cluster CLI: oc
 ```
 
-All namespace checks, PVC listing, and label/annotation commands use the selected CLI — not hard-coded `kubectl`.
+All optional namespace checks, target namespace creation, OpenShift SCC setup, and label/annotation commands use the selected CLI — not hard-coded `kubectl`.
+
+PVC names for restore selection are loaded from **PPDM** (`GET /api/v2/assets` with filter `subtype eq "K8S_PERSISTENT_VOLUME_CLAIM"`), not from a live `get pvc` on the cluster.
 
 ### TLS / self-signed certificates (`curl-ssl.sh`)
 
@@ -124,11 +128,11 @@ cd ppdm-k8s-pvc-restore
 chmod +x ppdm-env-check.sh ppdm-env-cfg.sh ppdm-logging.sh curl-ssl.sh k8s-cli.sh pvc_restore_wrapper.sh ppdm-restore-selected-pvcs-api.sh
 ```
 
-Verify cluster access (the toolkit will prefer `oc` when both are installed):
+Verify cluster access when you plan to create the target namespace or configure OpenShift prerequisites (both are **off by default**):
 
 ```bash
 oc get ns 2>/dev/null || kubectl get ns
-oc get pvc -n <your-source-namespace> 2>/dev/null || kubectl get pvc -n <your-source-namespace>
+oc get ns <your-target-namespace> 2>/dev/null || kubectl get ns <your-target-namespace>
 ```
 
 ---
@@ -224,7 +228,7 @@ Enter the number of the copy you want to restore from.
 
 #### 2d. Select PVCs
 
-PVCs are listed from the **live** source namespace via the cluster CLI (`oc` or `kubectl`):
+PVCs are listed from **PPDM assets** for the source namespace (`K8S_PERSISTENT_VOLUME_CLAIM` subtype). The script also tries `get namespace` on the cluster; if that fails, it logs a **warning** and continues with the PPDM list.
 
 ```
 Available PVCs:
@@ -237,22 +241,38 @@ Select PVC numbers (comma-separated or 'all'):
 |-------|--------|
 | `1` | Restore only the first PVC |
 | `1,3` | Restore PVCs 1 and 3 |
-| `all` | Restore every PVC in the namespace |
+| `all` | Restore every PVC listed |
 
 #### 2e. Optional restore options
 
-| Prompt | Format | Purpose |
-|--------|--------|---------|
-| Target inventory source ID | UUID or blank | Target cluster inventory in PPDM (if required by your environment) |
-| Namespace labels | `key=val,key2=val2` | Labels applied to the target namespace |
-| Namespace annotations | `key=val,key2=val2` | Annotations applied to the target namespace |
+| Prompt | Format | Default | Purpose |
+|--------|--------|---------|---------|
+| Create target namespace if missing? | `y` / `n` | **No** | Run `oc create namespace` / `kubectl create namespace` when the target does not exist |
+| Configure OpenShift restore (service account + SCC)? | `y` / `n` | **No** | Create `ppdm-serviceaccount` and grant `anyuid` SCC (OpenShift / `oc` only) |
+| Target inventory source ID | UUID or blank | blank | Target cluster inventory in PPDM (if required by your environment) |
+| Namespace labels | `key=val,key2=val2` | blank | Labels applied to the target namespace after restore submit |
+| Namespace annotations | `key=val,key2=val2` | blank | Annotations applied to the target namespace after restore submit |
+
+Pre-set the yes/no prompts to skip them:
+
+```bash
+export CREATE_TARGET_NAMESPACE=true
+export CONFIGURE_OPENSHIFT_RESTORE=true
+```
 
 #### 2f. Restore execution
 
-The wrapper calls `ppdm-restore-selected-pvcs-api.sh` with the collected values:
+The wrapper calls `ppdm-restore-selected-pvcs-api.sh` with these **positional arguments**:
 
 ```
-COPY_ID, TARGET_NAMESPACE, PVC_SPECS, TARGET_INV_ID, NS_LABELS, NS_ANNOTATIONS
+COPY_ID
+TARGET_NAMESPACE
+PVC_SPECS
+TARGET_INV_ID
+NS_LABELS
+NS_ANNOTATIONS
+CREATE_TARGET_NAMESPACE      # true or false
+CONFIGURE_OPENSHIFT_RESTORE  # true or false
 ```
 
 On completion: `Restore workflow completed`
@@ -264,11 +284,12 @@ This toolkit always submits **`TO_EXISTING`** restores via `POST /api/v2/restore
 | Behavior | Detail |
 |----------|--------|
 | Restore type | Always `TO_EXISTING` (other `RESTORE_TYPE` values are ignored with a warning) |
-| Target namespace | Created automatically if missing (`oc create namespace` / `kubectl create namespace`) |
-| OpenShift prep | When `oc` is the cluster CLI: creates `ppdm-serviceaccount` and grants `anyuid` SCC so PPDM cproxy can deploy |
+| Target namespace | **Not** created unless you answer `y` to *Create target namespace if missing?* (or pass `true` as argument 7) |
+| OpenShift prep | **Skipped by default.** When enabled (`CONFIGURE_OPENSHIFT_RESTORE=true`): creates `ppdm-serviceaccount` and grants `anyuid` SCC so PPDM cproxy can deploy |
 | PVC-only (default) | `skipNamespaceResources: true` with selected `persistentVolumeClaims` |
+| PVC source list | PPDM `GET /api/v2/assets?filter=details.k8s.namespace in ("<ns>") and subtype eq "K8S_PERSISTENT_VOLUME_CLAIM"` |
 
-On OpenShift, before the restore API call the script runs:
+When OpenShift prep is enabled, before the restore API call the script runs:
 
 ```bash
 oc create serviceaccount ppdm-serviceaccount -n <target-namespace>
@@ -277,7 +298,7 @@ oc adm policy add-scc-to-user anyuid \
   -n <target-namespace>
 ```
 
-These steps are skipped on plain Kubernetes (`kubectl` only).
+Service account name and SCC are configurable via `PPDM_OPENSHIFT_SA` and `PPDM_OPENSHIFT_SCC`. OpenShift prep requires `oc` and an existing target namespace (or `CREATE_TARGET_NAMESPACE=true`).
 
 ---
 
@@ -293,7 +314,20 @@ export PPDM_PASSWORD='your-password'
 
 export SOURCE_NAMESPACE=my-app
 export TARGET_NAMESPACE=my-app-restored
+export CREATE_TARGET_NAMESPACE=true
+export CONFIGURE_OPENSHIFT_RESTORE=true
 ./pvc_restore_wrapper.sh
+```
+
+Call the restore script directly (positional arguments 7 and 8 default to `false` when omitted):
+
+```bash
+./ppdm-restore-selected-pvcs-api.sh \
+  "<COPY_ID>" \
+  "my-app-restored" \
+  "data-pvc,config-pvc" \
+  "" "" "" \
+  true true
 ```
 
 If `PPDM_BASE_URL` is already set, it takes priority over `PPDM_HOST`. URLs are normalized automatically:
@@ -322,7 +356,9 @@ If `PPDM_BASE_URL` is already set, it takes priority over `PPDM_HOST`. URLs are 
 | `PPDM_CURL_INSECURE` | user | `true` = skip TLS verification for curl (lab only) |
 | `K8S_CLI` | `k8s-cli.sh` / user | Cluster CLI to use (`oc` or `kubectl`; auto-detected if unset) |
 | `SOURCE_NAMESPACE` | user | Source Kubernetes namespace |
-| `TARGET_NAMESPACE` | user | Target Kubernetes namespace (created if missing) |
+| `TARGET_NAMESPACE` | user | Target Kubernetes namespace |
+| `CREATE_TARGET_NAMESPACE` | user / prompt | `true` = create target namespace if missing (default: `false`; wrapper arg 7 / restore script arg 7) |
+| `CONFIGURE_OPENSHIFT_RESTORE` | user / prompt | `true` = OpenShift SA + SCC prep (default: `false`; wrapper arg 8 / restore script arg 8) |
 | `PPDM_OPENSHIFT_SA` | user | OpenShift service account for cproxy (default: `ppdm-serviceaccount`) |
 | `PPDM_OPENSHIFT_SCC` | user | OpenShift SCC to grant (default: `anyuid`) |
 | `SKIP_NAMESPACE_RESOURCES` | user | `true` (default) = PVC-only; `false` = include namespace resources |
@@ -360,9 +396,13 @@ All auth errors are logged as `[ERROR]` lines with a clear message. Logs go to *
 | `PPDM env file is missing PPDM_TOKEN` | Corrupt or hand-edited cfg | Re-run `./ppdm-env-check.sh` to recreate the file |
 | `Namespace asset not found` | Namespace not protected in PPDM | Confirm the namespace is registered as a K8s namespace asset |
 | `No backup copies available for namespace` | No copies for that asset | Verify backups exist in PPDM for the source namespace |
-| `No PVCs found` | Empty namespace or wrong context | Run `oc get pvc -n <namespace>` or `kubectl get pvc -n <namespace>`; check current context |
-| `Invalid selection` | Bad copy number | Pick a number from the displayed list |
-| `Target namespace not found` (WARN) | Namespace missing during label/annotation step | Namespace should be created earlier in the script — check cluster permissions |
+| `No PVC assets found in PPDM for namespace` | No `K8S_PERSISTENT_VOLUME_CLAIM` assets in PPDM for that namespace | Confirm PVCs are inventoried/protected in PPDM; name must match source namespace |
+| `not accessible with current ... context — continuing with PPDM asset list` (WARN) | Source namespace missing in cluster CLI context | Usually safe to ignore if PPDM has the PVC assets; fix context if you need cluster-side checks |
+| `Invalid selection` | Bad copy or PVC number | Pick a number from the displayed list |
+| `Target namespace preparation disabled` (INFO) | Both create-namespace and OpenShift prep are `false` | Expected by default; enable args 7/8 if you need cluster prep |
+| `Target namespace '...' not found — create it manually` (WARN) | Target missing and `CREATE_TARGET_NAMESPACE=false` | Create the namespace yourself or re-run with `CREATE_TARGET_NAMESPACE=true` |
+| `CONFIGURE_OPENSHIFT_RESTORE=true but cluster CLI is not 'oc'` | OpenShift prep on plain Kubernetes | Use `oc`, or set `CONFIGURE_OPENSHIFT_RESTORE=false` |
+| `Target namespace not found` (WARN) | Namespace missing during label/annotation step | Create the namespace first or enable `CREATE_TARGET_NAMESPACE` |
 | `RESTORE_TYPE=... ignored` (WARN) | Unsupported restore type requested | Script forces `TO_EXISTING` per PPDM API |
 | `Missing required command: oc or kubectl` | No cluster CLI in PATH | Install `oc` (OpenShift) or `kubectl`; or set `K8S_CLI` to the full path |
 | `not accessible with current oc context` | Wrong OpenShift project/context | `oc config current-context` / `oc project <namespace>` |
@@ -372,7 +412,9 @@ All auth errors are logged as `[ERROR]` lines with a clear message. Logs go to *
 
 | Error / log | Likely cause | What to try |
 |-------------|--------------|-------------|
-| `oc/kubectl not available` (WARN) | Cluster CLI missing for optional checks | Install `oc` or `kubectl`; restore may still submit to PPDM |
+| `oc/kubectl not available` (WARN) | Cluster CLI missing for optional checks | Install `oc` or `kubectl` when using namespace prep or labels/annotations |
+| `Target namespace preparation disabled` (INFO) | Args 7 and 8 are `false` | Expected default; pass `true` for namespace create and/or OpenShift prep |
+| `Target namespace '...' not found — create it manually` (WARN) | Target NS missing, create disabled | Create namespace or pass `true` as argument 7 |
 | `RESTORE_TYPE=... ignored` (WARN) | Non-`TO_EXISTING` type requested | Expected — script always uses `TO_EXISTING` |
 | `Submitting Kubernetes PVC restore (POST /api/v2/restored-copies) failed` | PPDM API or payload error | Check HTTP message; verify `copyIds`, `targetInventorySourceId`, and PVC names |
 | `Restore request accepted but no activity ID` | Unexpected API response | Check PPDM version and API permissions |

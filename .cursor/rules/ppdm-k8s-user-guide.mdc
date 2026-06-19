@@ -1,0 +1,26 @@
+---
+description: Keep USER_Guide.md in sync when changing the PVC restore toolkit
+globs: ppdm-k8s-pvc-restore/**/*.sh,ppdm-k8s-pvc-restore/USER_Guide.md
+alwaysApply: false
+---
+
+# USER_Guide.md must stay current
+
+When changing `ppdm-k8s-pvc-restore/` scripts, update `ppdm-k8s-pvc-restore/USER_Guide.md` in the same task if behavior, prompts, arguments, defaults, or troubleshooting change.
+
+## Update these sections
+
+| Change type | USER_Guide sections |
+|-------------|---------------------|
+| New/changed interactive prompt | Step 2 workflow (2a–2f) |
+| New/changed script argument | 2f Restore execution, Non-interactive usage |
+| New/changed env var or default | Environment variables table |
+| New/changed error or log message | Troubleshooting |
+| API or cluster prep behavior | Restore type (PPDM API), Requirements |
+
+## Source of truth
+
+- Wrapper: `pvc_restore_wrapper.sh` (prompts, `run_restore` positional args)
+- Restore: `ppdm-restore-selected-pvcs-api.sh` (`usage()`, argument parsing, defaults)
+
+Do not leave USER_Guide describing removed behavior (e.g. live `kubectl get pvc` listing, automatic target namespace creation).

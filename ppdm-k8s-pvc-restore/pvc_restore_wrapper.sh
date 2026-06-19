@@ -4,6 +4,7 @@ set -euo pipefail
 # ------------------------------------------------------------
 # PPDM Kubernetes PVC Restore Wrapper
 # Requires: PPDM env file from ppdm-env-check.sh (or PPDM_* in environment)
+# User guide: USER_Guide.md (keep in sync when changing prompts or arguments)
 # ------------------------------------------------------------
 
 need_cmd() {
@@ -385,9 +386,12 @@ else
   log_info "Using CONFIGURE_OPENSHIFT_RESTORE from environment"
 fi
 
-ppdm_prompt TARGET_INV_ID "Target inventory source ID (optional): "
-ppdm_prompt NS_LABELS "Namespace labels (key=val,... optional): "
-ppdm_prompt NS_ANNOTATIONS "Namespace annotations (key=val,... optional): "
+#ppdm_prompt TARGET_INV_ID "Target inventory source ID (optional): "
+#ppdm_prompt NS_LABELS "Namespace labels (key=val,... optional): "
+#ppdm_prompt NS_ANNOTATIONS "Namespace annotations (key=val,... optional): "
+TARGET_INV_ID="${TARGET_INV_ID:-}"
+NS_LABELS="${NS_LABELS:-}"
+NS_ANNOTATIONS="${NS_ANNOTATIONS:-}"
 
 run_restore \
   "$COPY_ID" \
