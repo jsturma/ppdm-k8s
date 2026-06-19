@@ -20,6 +20,7 @@ ppdm-k8s-pvc-restore/logs/
 # OS and editor
 .DS_Store
 Thumbs.db
+.cursor/
 .idea/
 .vscode/
 *.code-workspace
