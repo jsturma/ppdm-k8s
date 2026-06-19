@@ -160,7 +160,7 @@ select_backup_copy() {
       (.createTime // .createdAt // "n/a"),
       (.assetName // .asset.name // .protectedAssetName // "n/a"),
       (.location // "n/a")
-    ] | @tsv' | awk -F'\t' '{ printf "%-4s %-38s %-22s %-24s %s", NR".", $1, $2, $3, $4 }' | ppdm_out_stream
+    ] | @tsv' | awk -F'\t' '{ printf "%-4s %-38s %-22s %-24s %s\n", NR".", $1, $2, $3, $4 }' | ppdm_out_stream
 
   ppdm_prompt copy_num "Select copy number: "
 
