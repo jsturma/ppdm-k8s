@@ -178,8 +178,10 @@ select_backup_copy() {
 }
 
 list_namespace_pvcs() {
+  // TODO must get PVC from PPDM $copy_id only !!!! 
+  // Not from the namespace using "$K8S_CLI" get pvc -n "$namespace" !!!
   local namespace="$1"
-
+  
   log_info "Listing PVCs in namespace '${namespace}'"
 
   if ! "$K8S_CLI" get namespace "$namespace" >/dev/null 2>&1; then
