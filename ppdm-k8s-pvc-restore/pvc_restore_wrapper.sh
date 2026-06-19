@@ -178,23 +178,28 @@ select_backup_copy() {
 }
 
 list_namespace_pvcs() {
-  // TODO must get PVC from PPDM $copy_id only !!!! 
-  // Not from the namespace using "$K8S_CLI" get pvc -n "$namespace" !!!
   local namespace="$1"
-  
-  log_info "Listing PVCs in namespace '${namespace}'"
+  local filter encoded_filter assets
+
+  log_info "Listing PVCs in namespace '${namespace}' from PPDM"
 
   if ! "$K8S_CLI" get namespace "$namespace" >/dev/null 2>&1; then
-    die "Namespace '${namespace}' not found or not accessible with current ${K8S_CLI} context"
+    log_warn "Namespace '${namespace}' not found or not accessible with current ${K8S_CLI} context — continuing with PPDM asset list"
   fi
 
+  filter="details.k8s.namespace in (\"${namespace}\") and subtype eq \"K8S_PERSISTENT_VOLUME_CLAIM\""
+  encoded_filter="$(printf '%s' "$filter" | jq -sRr @uri)"
+
+  assets="$(ppdm_api_get \
+    "${PPDM_BASE_URL}/api/v2/assets?pageSize=10000&filter=${encoded_filter}" \
+    "Fetching PVC assets for namespace '${namespace}'")"
+
   mapfile -t PVC_NAMES < <(
-    "$K8S_CLI" get pvc -n "$namespace" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null \
-      || die "Failed to list PVCs in namespace '${namespace}'"
-  )
+    echo "$assets" | jq -r '.content[]? | select(.name != null and .name != "") | .name' | sort -u
+  ) || die "Failed to parse PVC assets response (invalid JSON)"
 
   [[ ${#PVC_NAMES[@]} -gt 0 ]] || \
-    die "No PVCs found in namespace '${namespace}'"
+    die "No PVC assets found in PPDM for namespace '${namespace}'"
 
   log_info "Found ${#PVC_NAMES[@]} PVC(s) in namespace '${namespace}'"
 
