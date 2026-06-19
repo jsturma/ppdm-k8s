@@ -1,0 +1,84 @@
+https://ppdm-1.demo.local:8443/api/v2/assets?pageSize=10000&filter=details.k8s.namespace%20in%20(%22<Asset NS>%22)%20and%20subtype%20eq%20%22K8S_PERSISTENT_VOLUME_CLAIM%22
+Request Method GET
+
+{
+  "page" : {
+    "size" : 1,
+    "number" : 1,
+    "totalPages" : 1,
+    "totalElements" : 1,
+    "maxPageableElements" : 1
+  },
+  "content" : [ {
+    "id" : "7c63cc6b-8125-5aca-bae2-fb4c0e304542",
+    "name" : "postgres-15-aap-postgres-15-0",
+    "status" : "AVAILABLE",
+    "type" : "KUBERNETES",
+    "userTags" : [ "app.kubernetes.io/managed-by=automationcontroller-operator", "app.kubernetes.io/instance=postgres-15-aap", "app.kubernetes.io/component=database", "app.kubernetes.io/name=postgres-15" ],
+    "dataTargetIds" : null,
+    "aliasRefs" : null,
+    "assetGroupId" : null,
+    "protectionLifeCycleId" : null,
+    "protectionPolicyId" : null,
+    "protectionPolicy" : null,
+    "protectionStatus" : "UNPROTECTED",
+    "credentials" : null,
+    "externalIds" : [ "UID||7f8e6c59-6c6e-45c0-9e07-2509bdd5dab4" ],
+    "credentialId" : null,
+    "deleted" : false,
+    "protectable" : false,
+    "size" : 8589934592,
+    "operatingSystem" : null,
+    "preferredHostRef" : null,
+    "protectionCapacity" : {
+      "size" : 0,
+      "time" : null
+    },
+    "lastAvailableCopyTime" : null,
+    "details" : {
+      "k8s" : {
+        "uid" : "7f8e6c59-6c6e-45c0-9e07-2509bdd5dab4",
+        "namespace" : "aap",
+        "inventorySourceId" : "20a0bd49-931e-47db-b5b7-e6f7c16bc8ae",
+        "subType" : "K8S_PERSISTENT_VOLUME_CLAIM",
+        "size" : 8589934592,
+        "externalCreatedAt" : "2025-08-26T11:20:01Z",
+        "persistentVolumeClaim" : {
+          "excluded" : false,
+          "accessModes" : [ "ReadWriteOnce" ],
+          "storageClassName" : "ocs-storagecluster-cephfs",
+          "volumeMode" : "Filesystem",
+          "volumeName" : "pvc-7f8e6c59-6c6e-45c0-9e07-2509bdd5dab4",
+          "status" : "Bound"
+        },
+        "inventorySourceName" : "api.ocp.demo.local"
+      }
+    },
+    "ruleId" : null,
+    "backupDetails" : null,
+    "resourceGroupIds" : [ ],
+    "resourceGroups" : null,
+    "nestedBackupScope" : null,
+    "includedInNestedBackup" : null,
+    "granularBackupConfigured" : false,
+    "createdAt" : "2026-06-18T12:08:30.204119823Z",
+    "createdBy" : null,
+    "updatedAt" : "2026-06-18T12:46:49.921417158Z",
+    "subtype" : "K8S_PERSISTENT_VOLUME_CLAIM",
+    "vendor" : "KUBERNETES",
+    "networkLabel" : null,
+    "ruleName" : null,
+    "inventorySourceRef" : {
+      "id" : "20a0bd49-931e-47db-b5b7-e6f7c16bc8ae",
+      "name" : "api.ocp.demo.local",
+      "primaryAddress" : "api.ocp.demo.local"
+    },
+    "protectionProtocol" : null
+  } ],
+  "_links" : {
+    "self" : {
+      "href" : "https://ppdm-1.demo.local/api/v2/assets?page=1&pageSize=10000&filter=details.k8s.namespace%20in%20%28%22aap%22%29%20and%20subtype%20eq%20%22K8S_PERSISTENT_VOLUME_CLAIM%22{&orderby,queryState}",
+      "templated" : true
+    }
+  }
+}
