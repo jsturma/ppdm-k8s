@@ -20,6 +20,8 @@ PPDM_K8S_RESTORE_DOC="https://developer.dell.com/apis/4378/versions/20.1.0/backu
 
 MAPPING_FILE="${MAPPING_FILE:-pvc-restore-mapping-$(date +%Y%m%d-%H%M%S).tsv}"
 SKIP_NAMESPACE_RESOURCES="${SKIP_NAMESPACE_RESOURCES:-true}"
+CREATE_TARGET_NAMESPACE="${CREATE_TARGET_NAMESPACE:-false}"
+CONFIGURE_OPENSHIFT_RESTORE="${CONFIGURE_OPENSHIFT_RESTORE:-false}"
 RESTORE_TYPE="${RESTORE_TYPE:-}"
 OVERWRITE_PVC="${OVERWRITE_PVC:-false}"
 POLL_ACTIVITY="${POLL_ACTIVITY:-false}"
@@ -45,6 +47,8 @@ Environment:
   PPDM_ENV_FILE                      Path to env file (default: .ppdm-env.cfg)
   MAPPING_FILE                       Output mapping file path
   SKIP_NAMESPACE_RESOURCES           Default: true (PVC-only restore)
+  CREATE_TARGET_NAMESPACE            Default: false (create target namespace if missing)
+  CONFIGURE_OPENSHIFT_RESTORE        Default: false (OpenShift SA + SCC for PPDM cproxy)
   OVERWRITE_PVC                      Default: false
   POLL_ACTIVITY                      Poll restore activity until completion
   POLL_INTERVAL_SEC / POLL_TIMEOUT_SEC
@@ -260,17 +264,31 @@ ensure_restore_target_namespace() {
 
   log_info "Restore type forced to TO_EXISTING (${PPDM_K8S_RESTORE_DOC})"
 
+  if [[ "$CREATE_TARGET_NAMESPACE" != true && "$CONFIGURE_OPENSHIFT_RESTORE" != true ]]; then
+    log_info "Target namespace preparation disabled (CREATE_TARGET_NAMESPACE=false, CONFIGURE_OPENSHIFT_RESTORE=false)"
+    return 0
+  fi
+
   detect_k8s_cli || \
     die "oc or kubectl is required to prepare target namespace '${target_namespace}'"
 
-  if ! "$K8S_CLI" get namespace "$target_namespace" >/dev/null 2>&1; then
-    log_info "Target namespace '${target_namespace}' not found — creating it (${K8S_CLI})"
-    "$K8S_CLI" create namespace "$target_namespace"
-  else
-    log_info "Target namespace '${target_namespace}' already exists (${K8S_CLI})"
+  if [[ "$CREATE_TARGET_NAMESPACE" == true ]]; then
+    if ! "$K8S_CLI" get namespace "$target_namespace" >/dev/null 2>&1; then
+      log_info "Target namespace '${target_namespace}' not found — creating it (${K8S_CLI})"
+      "$K8S_CLI" create namespace "$target_namespace"
+    else
+      log_info "Target namespace '${target_namespace}' already exists (${K8S_CLI})"
+    fi
+  elif ! "$K8S_CLI" get namespace "$target_namespace" >/dev/null 2>&1; then
+    log_warn "Target namespace '${target_namespace}' not found — create it manually or set CREATE_TARGET_NAMESPACE=true"
   fi
 
-  if is_openshift_cluster; then
+  if [[ "$CONFIGURE_OPENSHIFT_RESTORE" == true ]]; then
+    is_openshift_cluster || \
+      die "CONFIGURE_OPENSHIFT_RESTORE=true but cluster CLI is not 'oc' (OpenShift required)"
+    if ! oc get namespace "$target_namespace" >/dev/null 2>&1; then
+      die "Target namespace '${target_namespace}' not found — create it first or enable CREATE_TARGET_NAMESPACE"
+    fi
     configure_openshift_restore_namespace "$target_namespace"
   fi
 }
@@ -477,6 +495,8 @@ log_info "Source namespace: ${SOURCE_NAMESPACE:-<not set>}"
 log_info "Target namespace: ${TARGET_NAMESPACE}"
 log_info "PVC specs: ${PVC_SPECS:-<all>}"
 log_info "PVC-only restore: ${SKIP_NAMESPACE_RESOURCES}"
+log_info "Create target namespace: ${CREATE_TARGET_NAMESPACE}"
+log_info "Configure OpenShift restore: ${CONFIGURE_OPENSHIFT_RESTORE}"
 [[ -n "$TARGET_INV_ID" ]] && log_info "Target inventory source ID: ${TARGET_INV_ID}"
 [[ -n "$NS_LABELS" ]] && log_info "Namespace labels: ${NS_LABELS}"
 [[ -n "$NS_ANNOTATIONS" ]] && log_info "Namespace annotations: ${NS_ANNOTATIONS}"

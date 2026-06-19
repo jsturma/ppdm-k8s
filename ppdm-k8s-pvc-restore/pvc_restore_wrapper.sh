@@ -241,6 +241,34 @@ select_pvcs() {
   echo "$specs"
 }
 
+prompt_yes_no() {
+  local __var="$1"
+  local prompt="$2"
+  local default="${3:-false}"
+  local answer default_hint input
+
+  if [[ "$default" == true ]]; then
+    default_hint="Y/n"
+  else
+    default_hint="y/N"
+  fi
+
+  ppdm_prompt input "${prompt} [${default_hint}]: "
+  input="${input// /}"
+  input="$(printf '%s' "$input" | tr '[:upper:]' '[:lower:]')"
+
+  case "$input" in
+    y|yes) printf -v "$__var" '%s' "true" ;;
+    n|no) printf -v "$__var" '%s' "false" ;;
+    "")
+      printf -v "$__var" '%s' "$default"
+      ;;
+    *)
+      die "Invalid answer: '${input}' (expected y or n)"
+      ;;
+  esac
+}
+
 run_restore() {
   local copy_id="$1"
   local target_namespace="$2"
@@ -256,6 +284,8 @@ run_restore() {
   log_info "Source namespace: ${SOURCE_NAMESPACE}"
   log_info "Target namespace: ${target_namespace}"
   log_info "PVC specs: ${pvc_specs:-<all>}"
+  log_info "Create target namespace: ${CREATE_TARGET_NAMESPACE}"
+  log_info "Configure OpenShift restore: ${CONFIGURE_OPENSHIFT_RESTORE}"
 
   SOURCE_NAMESPACE="$SOURCE_NAMESPACE" \
   PPDM_BASE_URL="$PPDM_BASE_URL" \
@@ -263,6 +293,8 @@ run_restore() {
   PPDM_ENV_FILE="$PPDM_ENV_FILE" \
   PPDM_LOG_DIR="$PPDM_LOG_DIR" \
   PPDM_LOG_FILE="$PPDM_LOG_FILE" \
+  CREATE_TARGET_NAMESPACE="$CREATE_TARGET_NAMESPACE" \
+  CONFIGURE_OPENSHIFT_RESTORE="$CONFIGURE_OPENSHIFT_RESTORE" \
     "$RESTORE_SCRIPT" \
     "$copy_id" \
     "$target_namespace" \
@@ -336,6 +368,21 @@ PVC_SPECS="$(select_pvcs)"
 # ------------------------------------------------------------
 # Step 6: Optional restore options and execute
 # ------------------------------------------------------------
+CREATE_TARGET_NAMESPACE="${CREATE_TARGET_NAMESPACE:-}"
+CONFIGURE_OPENSHIFT_RESTORE="${CONFIGURE_OPENSHIFT_RESTORE:-}"
+
+if [[ -z "$CREATE_TARGET_NAMESPACE" ]]; then
+  prompt_yes_no CREATE_TARGET_NAMESPACE "Create target namespace if missing?" false
+else
+  log_info "Using CREATE_TARGET_NAMESPACE from environment"
+fi
+
+if [[ -z "$CONFIGURE_OPENSHIFT_RESTORE" ]]; then
+  prompt_yes_no CONFIGURE_OPENSHIFT_RESTORE "Configure OpenShift restore (service account + SCC)?" false
+else
+  log_info "Using CONFIGURE_OPENSHIFT_RESTORE from environment"
+fi
+
 ppdm_prompt TARGET_INV_ID "Target inventory source ID (optional): "
 ppdm_prompt NS_LABELS "Namespace labels (key=val,... optional): "
 ppdm_prompt NS_ANNOTATIONS "Namespace annotations (key=val,... optional): "
