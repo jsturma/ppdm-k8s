@@ -152,7 +152,7 @@ select_backup_copy() {
   log_info "Found ${copy_count} backup copy/copies for namespace '${namespace}'"
 
   ppdm_out "Available copies:"
-  ppdm_out "$(printf '%-4s %-38s %-22s %-24s %s' '#' 'Copy ID' 'Create Time' 'AssetName' 'Location')"
+  ppdm_out "$(printf '%-4s %-38.38s %-30.30s %-24.24s %s' '#' 'Copy ID' 'Create Time' 'AssetName' 'Location')"
   echo "$filtered_copies" | jq -r '
     .content[]? |
     [
@@ -160,7 +160,7 @@ select_backup_copy() {
       (.createTime // .createdAt // "n/a"),
       (.assetName // .asset.name // .protectedAssetName // "n/a"),
       (.location // "n/a")
-    ] | @tsv' | awk -F'\t' '{ printf "%-4s %-38s %-22s %-24s %s\n", NR".", $1, $2, $3, $4 }' | ppdm_out_stream
+    ] | @tsv' | awk -F'\t' '{ printf "%-4s %-38.38s %-30.30s %-24.24s %s\n", NR".", $1, $2, $3, $4 }' | ppdm_out_stream
 
   ppdm_prompt copy_num "Select copy number: "
 
