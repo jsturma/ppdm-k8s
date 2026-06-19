@@ -198,7 +198,7 @@ list_namespace_pvcs() {
 
   ppdm_out "Available PVCs:"
   for i in "${!PVC_NAMES[@]}"; do
-    ppdm_out "$(printf '%2d) %s' "$((i + 1))" "${PVC_NAMES[$i]}")"
+    ppdm_out "$(printf '%2d) %s\n' "$((i + 1))" "${PVC_NAMES[$i]}")"
   done
 }
 
