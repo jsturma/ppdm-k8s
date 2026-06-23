@@ -21,6 +21,7 @@ set -euo pipefail
 PPDM_K8S_RESTORE_DOC="https://developer.dell.com/apis/4378/versions/20.1.0/backup-and-restore-kubernetes-5987m0"
 
 MAPPING_FILE="${MAPPING_FILE:-pvc-restore-mapping-$(date +%Y%m%d-%H%M%S).tsv}"
+MAPPING_FILE_PATH=""
 SKIP_NAMESPACE_RESOURCES="${SKIP_NAMESPACE_RESOURCES:-true}"
 RESTORE_TYPE="${RESTORE_TYPE:-}"
 OVERWRITE_PVC="${OVERWRITE_PVC:-false}"
@@ -48,7 +49,7 @@ Arguments:
 Environment:
   PPDM_BASE_URL, PPDM_TOKEN          Required (from .ppdm-env.cfg or environment)
   PPDM_ENV_FILE                      Path to env file (default: .ppdm-env.cfg)
-  MAPPING_FILE                       Output mapping file path
+  MAPPING_FILE                       Temporary mapping TSV path (removed on script exit)
   SKIP_NAMESPACE_RESOURCES           Default: true (PVC-only restore)
   OVERWRITE_PVC                      Default: false
   POLL_ACTIVITY                      Poll restore activity until completion
@@ -341,10 +342,9 @@ write_mapping_file() {
   local target_namespace="$1"
   local pvc_specs="$2"
   local activity_id="$3"
-  local mapping_path
 
-  mapping_path="$(pwd)/${MAPPING_FILE}"
-  log_info "Writing PVC mapping file: ${mapping_path}"
+  MAPPING_FILE_PATH="$(pwd)/${MAPPING_FILE}"
+  log_info "Writing PVC mapping file: ${MAPPING_FILE_PATH}"
 
   {
     printf 'source_pvc\ttarget_pvc\ttarget_namespace\tactivity_id\n'
@@ -361,7 +361,13 @@ write_mapping_file() {
         printf '%s\t%s\t%s\t%s\n' "$name" "$name" "$target_namespace" "$activity_id"
       done
     fi
-  } >"$mapping_path"
+  } >"$MAPPING_FILE_PATH"
+}
+
+cleanup_mapping_file() {
+  [[ -n "$MAPPING_FILE_PATH" && -f "$MAPPING_FILE_PATH" ]] || return 0
+  log_info "Removing PVC mapping file: ${MAPPING_FILE_PATH}"
+  rm -f "$MAPPING_FILE_PATH"
 }
 
 apply_namespace_metadata() {
@@ -524,6 +530,7 @@ RESTORE_JOB_ID="$(echo "$RESPONSE" | jq -r '.id // empty')"
 log_info "Restore activity submitted: ${ACTIVITY_ID}"
 
 write_mapping_file "$TARGET_NAMESPACE" "$PVC_SPECS" "$ACTIVITY_ID"
+trap cleanup_mapping_file EXIT
 apply_namespace_metadata "$TARGET_NAMESPACE" "$NS_LABELS" "$NS_ANNOTATIONS"
 
 if [[ "$POLL_ACTIVITY" == true ]]; then

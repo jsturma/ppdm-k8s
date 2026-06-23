@@ -363,7 +363,7 @@ If `PPDM_BASE_URL` is already set, it takes priority over `PPDM_HOST`. URLs are 
 | `PPDM_OPENSHIFT_SCC` | user | OpenShift SCC to grant (default: `anyuid`) |
 | `SKIP_NAMESPACE_RESOURCES` | user | `true` (default) = PVC-only; `false` = include namespace resources |
 | `RESTORE_SCRIPT` | user | Path to restore script (default: `./ppdm-restore-selected-pvcs-api.sh`) |
-| `MAPPING_FILE` | user | Output path for PVC mapping TSV (restore script) |
+| `MAPPING_FILE` | user | Temporary PVC mapping TSV basename (removed when the restore script exits) |
 | `OVERWRITE_PVC` | user | `true` = overwrite existing PVC contents (restore script) |
 | `POLL_ACTIVITY` | user | `true` = wait for restore activity to complete (restore script) |
 
