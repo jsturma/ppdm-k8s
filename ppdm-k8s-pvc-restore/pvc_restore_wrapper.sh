@@ -135,7 +135,8 @@ select_backup_copy() {
   [[ -n "$asset_id" ]] || die "Asset ID is required to list backup copies"
   [[ -n "$namespace" ]] || die "Namespace is required to list backup copies"
 
-  filter="assetId eq \"${asset_id}\""
+  # filter="assetId eq \"${asset_id}\""
+  filter="assetId eq \"${asset_id}\" and state eq \"IDLE\""
   encoded_filter="$(printf '%s' "$filter" | jq -sRr @uri)"
 
   copies="$(ppdm_api_get \
